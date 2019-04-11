@@ -1,0 +1,1 @@
+uglifyjs crowdcitylaya.max.js -o crowdcitylaya.min.js -c -m

@@ -1,0 +1,1251 @@
+
+/*
+	PatrolJS - Navigation mesh toolkit for ThreeJS
+	http://github.com/nickjanssen/patroljs
+	Licensed under MIT
+*/
+
+(function (exports) {
+
+	var _, THREE, ProgressBar;
+
+	if (typeof module !== 'undefined' && module.exports) {
+		_ = require('underscore');
+		THREE = require('three');
+		ProgressBar = require('progress');
+	}
+	else {
+		_ = window._;
+		THREE = window.THREE;
+
+		// stub in the browser
+		ProgressBar = function () {
+			return {
+				tick: function () {}
+			};
+		};
+	}
+
+
+	var computeCentroids = function (geometry) {
+		var f, fl, face;
+
+		for ( f = 0, fl = geometry.faces.length; f < fl; f ++ ) {
+
+			face = geometry.faces[ f ];
+			face.centroid = new laya.d3.math.Vector3( 0, 0, 0 );
+			laya.d3.math.Vector3.add(face.centroid,geometry.vertices[ face.a ],face.centroid);
+			laya.d3.math.Vector3.add(face.centroid,geometry.vertices[ face.b ],face.centroid);
+			laya.d3.math.Vector3.add(face.centroid,geometry.vertices[ face.c ],face.centroid);
+			laya.d3.math.Vector3.scale(face.centroid,1/3,face.centroid);
+
+		}
+	};
+
+
+    function roundNumber(number, decimals) {
+        var newnumber = new Number(number + '').toFixed(parseInt(decimals));
+        return parseFloat(newnumber);
+    }
+
+	var nodeIdCount = 1;
+	var polygonId = 1;
+
+	var bar;
+	var barConfig = {
+	    // complete: "X",
+	    // incomplete: ".",
+	    width: 30
+	};
+
+	var mergeVertexIds = function (aList, bList) {
+
+		var sharedVertices = [];
+
+		_.each(aList, function (vId) {
+			if (_.contains(bList, vId)) {
+				sharedVertices.push(vId);
+			}
+		});
+
+		if (sharedVertices.length < 2) return [];
+
+		// console.log("TRYING aList:", aList, ", bList:", bList, ", sharedVertices:", sharedVertices);
+
+		if (_.contains(sharedVertices, aList[0]) && _.contains(sharedVertices, aList[aList.length - 1])) {
+			// Vertices on both edges are bad, so shift them once to the left
+			aList.push(aList.shift());
+		}
+
+		if (_.contains(sharedVertices, bList[0]) && _.contains(sharedVertices, bList[bList.length - 1])) {
+			// Vertices on both edges are bad, so shift them once to the left
+			bList.push(bList.shift());
+		}
+
+		// Again!
+		sharedVertices = [];
+
+		_.each(aList, function (vId) {
+			if (_.contains(bList, vId)) {
+				sharedVertices.push(vId);
+			}
+		});
+
+		var clockwiseMostSharedVertex = sharedVertices[1];
+		var counterClockwiseMostSharedVertex = sharedVertices[0];
+
+
+		var cList = _.clone(aList);
+		while (cList[0] !== clockwiseMostSharedVertex) {
+			cList.push(cList.shift());
+		}
+
+		var c = 0;
+
+		var temp = _.clone(bList);
+		while (temp[0] !== counterClockwiseMostSharedVertex) {
+			temp.push(temp.shift());
+
+			if (c++ > 10) debugger;
+		}
+
+		// Shave
+		temp.shift();
+		temp.pop();
+
+		cList = cList.concat(temp);
+
+		// console.log("aList:", aList, ", bList:", bList, ", cList:", cList, ", sharedVertices:", sharedVertices);
+
+		return cList;
+	};
+
+	var setPolygonCentroid = function (polygon, navigationMesh) {
+		var sum = new laya.d3.math.Vector3();
+
+		var vertices = navigationMesh.vertices;
+
+		_.each(polygon.vertexIds, function (vId) {
+			laya.d3.math.Vector3.add(sum,vertices[vId],sum);
+		});
+		laya.d3.math.Vector3.scale(sum,1/polygon.vertexIds.length,sum);
+		sum.cloneTo(polygon.centroid);
+	};
+
+	var cleanPolygon = function (polygon, navigationMesh) {
+
+		var newVertexIds = [];
+
+		var vertices = navigationMesh.vertices;
+
+		for (var i = 0; i < polygon.vertexIds.length; i++) {
+
+			var vertex = vertices[polygon.vertexIds[i]];
+
+			var nextVertexId, previousVertexId;
+			var nextVertex, previousVertex;
+
+			// console.log("nextVertex: ", nextVertex);
+
+			if (i === 0) {
+				nextVertexId = polygon.vertexIds[1];
+				previousVertexId = polygon.vertexIds[polygon.vertexIds.length - 1];
+			} else if (i === polygon.vertexIds.length - 1) {
+				nextVertexId = polygon.vertexIds[0];
+				previousVertexId = polygon.vertexIds[polygon.vertexIds.length - 2];
+			} else {
+				nextVertexId = polygon.vertexIds[i + 1];
+				previousVertexId = polygon.vertexIds[i - 1];
+			}
+
+			nextVertex = vertices[nextVertexId];
+			previousVertex = vertices[previousVertexId];
+
+			var a = nextVertex.clone().sub(vertex);
+			var b = previousVertex.clone().sub(vertex);
+
+			var angle = a.angleTo(b);
+
+			// console.log(angle);
+
+			if (angle > Math.PI - 0.01 && angle < Math.PI + 0.01) {
+				// Unneccesary vertex
+				// console.log("Unneccesary vertex: ", polygon.vertexIds[i]);
+				// console.log("Angle between "+previousVertexId+", "+polygon.vertexIds[i]+" "+nextVertexId+" was: ", angle);
+
+
+				// Remove the neighbours who had this vertex
+				var goodNeighbours = [];
+				_.each(polygon.neighbours, function (neighbour) {
+					if (!_.contains(neighbour.vertexIds, polygon.vertexIds[i])) {
+						goodNeighbours.push(neighbour);
+					}
+				});
+				polygon.neighbours = goodNeighbours;
+
+
+				// TODO cleanup the list of vertices and rebuild vertexIds for all polygons
+			} else {
+				newVertexIds.push(polygon.vertexIds[i]);
+			}
+
+		}
+
+		// console.log("New vertexIds: ", newVertexIds);
+
+		polygon.vertexIds = newVertexIds;
+
+		setPolygonCentroid(polygon, navigationMesh);
+
+	};
+
+	var isConvex = function (polygon, navigationMesh) {
+
+		var vertices = navigationMesh.vertices;
+
+		if (polygon.vertexIds.length < 3) return false;
+
+		var convex = true;
+
+		var total = 0;
+
+		var results = [];
+
+		for (var i = 0; i < polygon.vertexIds.length; i++) {
+
+			var vertex = vertices[polygon.vertexIds[i]];
+
+			var nextVertex, previousVertex;
+
+			// console.log("nextVertex: ", nextVertex);
+
+			if (i === 0) {
+				nextVertex = vertices[polygon.vertexIds[1]];
+				previousVertex = vertices[polygon.vertexIds[polygon.vertexIds.length - 1]];
+			} else if (i === polygon.vertexIds.length - 1) {
+				nextVertex = vertices[polygon.vertexIds[0]];
+				previousVertex = vertices[polygon.vertexIds[polygon.vertexIds.length - 2]];
+			} else {
+				nextVertex = vertices[polygon.vertexIds[i + 1]];
+				previousVertex = vertices[polygon.vertexIds[i - 1]];
+			}
+
+			var a = nextVertex.clone().sub(vertex);
+			var b = previousVertex.clone().sub(vertex);
+
+			var angle = a.angleTo(b);
+			total += angle;
+
+			// console.log(angle);
+			if (angle === Math.PI || angle === 0) return false;
+
+			var r = a.cross(b).y;
+			results.push(r);
+			// console.log("pushed: ", r);
+		}
+
+		// if ( total > (polygon.vertexIds.length-2)*Math.PI ) return false;
+
+		_.each(results, function (r) {
+			if (r === 0) convex = false;
+		});
+
+		if (results[0] > 0) {
+			_.each(results, function (r) {
+				if (r < 0) convex = false;
+			});
+		} else {
+			_.each(results, function (r) {
+				if (r > 0) convex = false;
+			});
+		}
+
+		// console.log("allowed: "+total+", max: "+(polygon.vertexIds.length-2)*Math.PI);
+		// if ( total > (polygon.vertexIds.length-2)*Math.PI ) convex = false;
+
+		// console.log("Convex: "+(convex ? "true": "false"));
+
+
+
+		return convex;
+	};
+
+	var buildPolygonGroups = function (navigationMesh) {
+
+		var polygons = navigationMesh.polygons;
+		var vertices = navigationMesh.vertices;
+
+		bar = new ProgressBar('Building polygon groups[:bar] :percent', _.extend(barConfig, {
+			total: polygons.length
+		}));
+
+		var polygonGroups = [];
+		var groupCount = 0;
+
+		var spreadGroupId = function (polygon) {
+			_.each(polygon.neighbours, function (neighbour) {
+				if (_.isUndefined(neighbour.group)) {
+					neighbour.group = polygon.group;
+					spreadGroupId(neighbour);
+				}
+			});
+		};
+
+		_.each(polygons, function (polygon, i) {
+
+			bar.tick();
+
+			if (_.isUndefined(polygon.group)) {
+				polygon.group = groupCount++;
+				// Spread it
+				spreadGroupId(polygon);
+			}
+
+			if (!polygonGroups[polygon.group]) polygonGroups[polygon.group] = [];
+
+			polygonGroups[polygon.group].push(polygon);
+		});
+
+
+		// Separate groups for testing
+		// var count = 0;
+		// _.each(polygonGroups, function(polygonGroup) {
+		//     var done = {};
+		//     count += 0.01;
+		//     _.each(polygonGroup, function(polygon) {
+		//         _.each(polygon.vertexIds, function(vId) {
+		//             if ( !done[vId] ) vertices[vId].y += count;
+		//             done[vId] = true;
+		//         });
+		//     });
+		// });
+
+
+		console.log("Groups built: ", polygonGroups.length);
+
+		return polygonGroups;
+	};
+
+	function array_intersect() {
+		var i, all, shortest, nShortest, n, len, ret = [],
+			obj = {},
+			nOthers;
+		nOthers = arguments.length - 1;
+		nShortest = arguments[0].length;
+		shortest = 0;
+		for (i = 0; i <= nOthers; i++) {
+			n = arguments[i].length;
+			if (n < nShortest) {
+				shortest = i;
+				nShortest = n;
+			}
+		}
+
+		for (i = 0; i <= nOthers; i++) {
+			n = (i === shortest) ? 0 : (i || shortest); //Read the shortest array first. Read the first array instead of the shortest
+			len = arguments[n].length;
+			for (var j = 0; j < len; j++) {
+				var elem = arguments[n][j];
+				if (obj[elem] === i - 1) {
+					if (i === nOthers) {
+						ret.push(elem);
+						obj[elem] = 0;
+					} else {
+						obj[elem] = i;
+					}
+				} else if (i === 0) {
+					obj[elem] = 0;
+				}
+			}
+		}
+		return ret;
+	}
+
+	var buildPolygonNeighbours = function (polygon, navigationMesh) {
+		polygon.neighbours = [];
+
+		// All other nodes that contain at least two of our vertices are our neighbours
+		for (var i = 0, len = navigationMesh.polygons.length; i < len; i++) {
+			if (polygon === navigationMesh.polygons[i]) continue;
+
+			// Don't check polygons that are too far, since the intersection tests take a long time
+			if (distanceToSquared(polygon.centroid,navigationMesh.polygons[i].centroid) > 100 * 100) continue;
+
+			var matches = array_intersect(polygon.vertexIds, navigationMesh.polygons[i].vertexIds);
+			// var matches = _.intersection(polygon.vertexIds, navigationMesh.polygons[i].vertexIds);
+
+			if (matches.length >= 2) {
+				polygon.neighbours.push(navigationMesh.polygons[i]);
+			}
+		}
+	};
+
+	var buildPolygonsFromGeometry = function (geometry) {
+
+		console.log("Vertices:", geometry.vertices.length, "polygons:", geometry.faces.length);
+
+		var polygons = [];
+		var vertices = geometry.vertices;
+		var faceVertexUvs = geometry.faceVertexUvs;
+
+		bar = new ProgressBar('Building polygons      [:bar] :percent', _.extend(barConfig, {
+			total: geometry.faces.length
+		}));
+
+		// Convert the faces into a custom format that supports more than 3 vertices
+		_.each(geometry.faces, function (face) {
+			bar.tick();
+			polygons.push({
+				id: polygonId++,
+				vertexIds: [face.a, face.b, face.c],
+				centroid: face.centroid,
+				normal: face.normal,
+				neighbours: []
+			});
+		});
+
+		var navigationMesh = {
+			polygons: polygons,
+			vertices: vertices,
+			faceVertexUvs: faceVertexUvs
+		};
+
+		bar = new ProgressBar('Calculating neighbours [:bar] :percent', _.extend(barConfig, {
+			total: polygons.length
+		}));
+
+		// Build a list of adjacent polygons
+		_.each(polygons, function (polygon) {
+			bar.tick();
+			buildPolygonNeighbours(polygon, navigationMesh);
+		});
+
+		return navigationMesh;
+	};
+
+	var cleanNavigationMesh = function (navigationMesh) {
+
+		var polygons = navigationMesh.polygons;
+		var vertices = navigationMesh.vertices;
+
+
+		// Remove steep triangles
+		var up = new laya.d3.math.Vector3(0, 1, 0);
+		polygons = _.filter(polygons, function (polygon) {
+			var angle = Math.acos(laya.d3.math.Vector3.dot(up,polygon.normal));
+			return angle < (Math.PI / 4);
+		});
+
+
+		// Remove unnecessary edges using the Hertel-Mehlhorn algorithm
+
+		// 1. Find a pair of adjacent nodes (i.e., two nodes that share an edge between them)
+		//    whose normals are nearly identical (i.e., their surfaces face the same direction).
+
+
+		var newPolygons = [];
+
+		_.each(polygons, function (polygon) {
+
+			if (polygon.toBeDeleted) return;
+
+			var keepLooking = true;
+
+			while (keepLooking) {
+				keepLooking = false;
+
+				_.each(polygon.neighbours, function (otherPolygon) {
+
+					if (polygon === otherPolygon) return;
+
+					if (Math.acos(polygon.normal.dot(otherPolygon.normal)) < 0.01) {
+						// That's pretty equal alright!
+
+						// Merge otherPolygon with polygon
+
+						var testVertexIdList = [];
+
+						var testPolygon = {
+							vertexIds: mergeVertexIds(polygon.vertexIds, otherPolygon.vertexIds),
+							neighbours: polygon.neighbours,
+							normal: polygon.normal.clone(),
+							centroid: polygon.centroid.clone()
+						};
+
+						cleanPolygon(testPolygon, navigationMesh);
+
+						if (isConvex(testPolygon, navigationMesh)) {
+							otherPolygon.toBeDeleted = true;
+
+
+							// Inherit the neighbours from the to be merged polygon, except ourself
+							_.each(otherPolygon.neighbours, function (otherPolygonNeighbour) {
+
+								// Set this poly to be merged to be no longer our neighbour
+								otherPolygonNeighbour.neighbours = _.without(otherPolygonNeighbour.neighbours, otherPolygon);
+
+								if (otherPolygonNeighbour !== polygon) {
+									// Tell the old Polygon's neighbours about the new neighbour who has merged
+									otherPolygonNeighbour.neighbours.push(polygon);
+								} else {
+									// For ourself, we don't need to know about ourselves
+									// But we inherit the old neighbours
+									polygon.neighbours = polygon.neighbours.concat(otherPolygon.neighbours);
+									polygon.neighbours = _.uniq(polygon.neighbours);
+
+									// Without ourselves in it!
+									polygon.neighbours = _.without(polygon.neighbours, polygon);
+								}
+							});
+
+							polygon.vertexIds = mergeVertexIds(polygon.vertexIds, otherPolygon.vertexIds);
+
+							// console.log(polygon.vertexIds);
+							// console.log("Merge!");
+
+							cleanPolygon(polygon, navigationMesh);
+
+							keepLooking = true;
+						}
+
+					}
+				});
+			}
+
+
+			if (!polygon.toBeDeleted) {
+				newPolygons.push(polygon);
+			}
+
+		});
+
+		var isUsed = function (vId) {
+			var contains = false;
+			_.each(newPolygons, function (p) {
+				if (!contains && _.contains(p.vertexIds, vId)) {
+					contains = true;
+				}
+			});
+			return contains;
+		};
+
+		// Clean vertices
+		var keepChecking = false;
+		for (var i = 0; i < vertices.length; i++) {
+			if (!isUsed(i)) {
+
+				// Decrement all vertices that are higher than i
+				_.each(newPolygons, function (p) {
+					for (var j = 0; j < p.vertexIds.length; j++) {
+						if (p.vertexIds[j] > i) {
+							p.vertexIds[j] --;
+						}
+					}
+				});
+
+				vertices.splice(i, 1);
+				i--;
+			}
+
+		};
+
+
+		navigationMesh.polygons = newPolygons;
+		navigationMesh.vertices = vertices;
+
+	};
+
+	var buildNavigationMesh = function (geometry) {
+
+		// Prepare geometry
+		computeCentroids(geometry);
+		
+		//由于腊鸭导出工具已经对vertice做了合并，所以这里删除
+		geometry.mergeVertices();
+		
+		// THREE.GeometryUtils.triangulateQuads(geometry);
+
+		// console.log("vertices:", geometry.vertices.length, "polygons:", geometry.faces.length);
+
+		var navigationMesh = buildPolygonsFromGeometry(geometry);
+
+		// cleanNavigationMesh(navigationMesh);
+		// console.log("Pre-clean:", navigationMesh.polygons.length, "polygons,", navigationMesh.vertices.length, "vertices.");
+
+		// console.log("")
+		// console.log("Vertices:", navigationMesh.vertices.length, "polygons,", navigationMesh.polygons.length, "vertices.");
+
+		return navigationMesh;
+	};
+
+	var getSharedVerticesInOrder = function (a, b) {
+
+		var aList = a.vertexIds;
+		var bList = b.vertexIds;
+
+		var sharedVertices = [];
+
+		_.each(aList, function (vId) {
+			if (_.contains(bList, vId)) {
+				sharedVertices.push(vId);
+			}
+		});
+
+		if (sharedVertices.length < 2) return [];
+
+		// console.log("TRYING aList:", aList, ", bList:", bList, ", sharedVertices:", sharedVertices);
+
+		if (_.contains(sharedVertices, aList[0]) && _.contains(sharedVertices, aList[aList.length - 1])) {
+			// Vertices on both edges are bad, so shift them once to the left
+			aList.push(aList.shift());
+		}
+
+		if (_.contains(sharedVertices, bList[0]) && _.contains(sharedVertices, bList[bList.length - 1])) {
+			// Vertices on both edges are bad, so shift them once to the left
+			bList.push(bList.shift());
+		}
+
+		// Again!
+		sharedVertices = [];
+
+		_.each(aList, function (vId) {
+			if (_.contains(bList, vId)) {
+				sharedVertices.push(vId);
+			}
+		});
+
+		return sharedVertices;
+	};
+
+	var groupNavMesh = function (navigationMesh) {
+
+		var saveObj = {};
+
+		_.each(navigationMesh.vertices, function (v) {
+			v.x = roundNumber(v.x, 2);
+			v.y = roundNumber(v.y, 2);
+			v.z = roundNumber(v.z, 2);
+		});
+
+		saveObj.vertices = navigationMesh.vertices;
+
+		var groups = buildPolygonGroups(navigationMesh);
+
+		saveObj.groups = [];
+
+		var findPolygonIndex = function (group, p) {
+			for (var i = 0; i < group.length; i++) {
+				if (p === group[i]) return i;
+			}
+		};
+
+		bar = new ProgressBar('Grouping               [:bar] :percent', _.extend(barConfig, {
+			total: groups.length
+		}));
+
+		_.each(groups, function (group) {
+
+			bar.tick();
+
+			var newGroup = [];
+
+			_.each(group, function (p) {
+
+				var neighbours = [];
+
+				_.each(p.neighbours, function (n) {
+					neighbours.push(findPolygonIndex(group, n));
+				});
+
+
+				// Build a portal list to each neighbour
+				var portals = [];
+				_.each(p.neighbours, function (n) {
+					portals.push(getSharedVerticesInOrder(p, n));
+				});
+
+
+				p.centroid.x = roundNumber(p.centroid.x, 2);
+				p.centroid.y = roundNumber(p.centroid.y, 2);
+				p.centroid.z = roundNumber(p.centroid.z, 2);
+
+				newGroup.push({
+					id: findPolygonIndex(group, p),
+					neighbours: neighbours,
+					vertexIds: p.vertexIds,
+					centroid: p.centroid,
+					portals: portals
+				});
+
+			});
+
+			saveObj.groups.push(newGroup);
+		});
+
+		return saveObj;
+	};
+
+	// javascript-astar
+	// http://github.com/bgrins/javascript-astar
+	// Freely distributable under the MIT License.
+	// Implements the astar search algorithm in javascript using a binary heap.
+
+	function BinaryHeap(justMinFun) {
+		this.a = [];
+		this.justMinFun = justMinFun;
+	}
+
+	BinaryHeap.prototype = {
+		ins: function (value) {
+			var p = this.a.length;
+			this.a[p] = value;
+			var pp = p >> 1;
+			while (p > 1 && this.justMinFun(this.a[p], this.a[pp])){
+				var temp = this.a[p];
+				this.a[p] = this.a[pp];
+				this.a[pp] = temp;
+				p = pp;
+				pp = p >> 1;
+			}
+		},
+		pop: function () {
+			var min = this.a[1];
+			this.a[1] = this.a[this.a.length - 1];
+			this.a.pop();
+			var p = 1;
+			var l = this.a.length;
+			var sp1 = p << 1;
+			var sp2 = sp1 + 1;
+			while (sp1 < l){
+				if (sp2 < l){
+					var minp = this.justMinFun(this.a[sp2], this.a[sp1]) ? sp2 : sp1;
+				} else {
+					minp = sp1;
+				}
+				if (this.justMinFun(this.a[minp], this.a[p])){
+					var temp = this.a[p];
+					this.a[p] = this.a[minp];
+					this.a[minp] = temp;
+					p = minp;
+					sp1 = p << 1;
+					sp2 = sp1 + 1;
+				} else {
+					break;
+				}
+			}
+			return min;
+		}
+	};
+
+	/*var distanceToSquared = function (a, b) {
+		var dx = a.x - b.x;
+		var dy = a.y - b.y;
+		var dz = a.z - b.z;
+
+		return dx * dx + dy * dy + dz * dz;
+	};*/
+
+	var astar = {
+		path:null,
+		nowVersion: 1,
+		justMin:function(x, y)
+		{
+			return x.f < y.f;
+		},
+		
+		search: function (graph, startNode, endNode,maxStep) {
+			if(maxStep===undefined){
+				maxStep=0;
+			}
+		//public function findPath(startX:int, startY:int, endX:int, endY:int,maxStep:int=0):Boolean
+		//{
+			astar.nowVersion++;
+			var step=0;
+			var open = new BinaryHeap(astar.justMin);
+			var node = startNode;
+			node.g=0;
+			node.version = astar.nowVersion;
+			var isFind = true;
+			var best = node;
+			var bestH = astar.heuristic(node,endNode);
+			while (node!==endNode)
+			{
+				var neighbours = astar.neighbours(graph, node);
+				for (var i = 0, il = neighbours.length; i < il; i++) {
+					var test = neighbours[i];
+					//八字围杀 四字围杀，放开这段代码支持四字围杀
+					
+					if(test.costVersion!==astar.nowVersion){
+						test.costVersion=astar.nowVersion;
+						test.cost=astar.heuristic(test,startNode);
+					}
+					var cost = test.cost;
+					step++;
+					var g = node.g + cost;
+					if(test.hVersion!==astar.nowVersion){
+						test.hVersion=astar.nowVersion;
+						test.h=astar.heuristic(test,endNode);
+					}
+					var h = test.h;//((test.x>endX)?(test.x-endX):(endX-test.x))+((test.y>endY)?(test.y-endY):(endY-test.y)) 
+					/*dxy > 0?(14 * absy + 10 * dxy):(14 * absx - 10 * dxy);*///Math.abs(test.x - endX) + Math.abs(test.y - endY);
+					var f = g + h;
+					if (test.version === astar.nowVersion){
+						if (test.f > f){
+							test.f = f;
+							test.g = g;
+							test.parent = node;
+							if (bestH > h)
+							{
+								best = test;
+								bestH = h;
+							}
+						}
+					}else{
+						test.f = f;
+						test.g = g;
+						test.parent = node;
+						open.ins(test);
+						test.version = astar.nowVersion;
+						if (bestH > h){
+							best = test;
+							bestH = h;
+						}
+					}
+				}
+				if (open.a.length === 1||(maxStep!==0&&step>maxStep))
+				{
+					isFind = false;
+					break;
+				}
+				node = open.pop();
+			}
+			if (node!=endNode)
+			{
+				node = best;
+			}
+			if (node){
+				astar.path = [];
+				astar.path.push(node);
+				while (node !== startNode)
+				{
+					node = node.parent;
+					astar.path.push(node);
+				}
+			}
+			return isFind;
+		},
+		
+		
+		/*init: function (graph) {
+			for (var x = 0; x < graph.length; x++) {
+				//for(var x in graph) {
+				var node = graph[x];
+				node.f = 0;
+				node.g = 0;
+				node.h = 0;
+				node.cost = 1.0;
+				node.visited = false;
+				node.closed = false;
+				node.parent = null;
+			}
+		},
+		cleanUp: function (graph) {
+			for (var x = 0; x < graph.length; x++) {
+				var node = graph[x];
+				delete node.f;
+				delete node.g;
+				delete node.h;
+				delete node.cost;
+				delete node.visited;
+				delete node.closed;
+				delete node.parent;
+			}
+		},*/
+		/*heap: function () {
+			return new BinaryHeap(astar.justMin);
+		},*/
+		/*justMin:function(x, y)
+		{
+			return x.f < y.f;
+		},*/
+		/*search: function (graph, start, end) {
+			astar.init(graph);
+			//heuristic = heuristic || astar.manhattan;
+
+
+			var openHeap = astar.heap();
+
+			openHeap.push(start);
+
+			while (openHeap.size() > 0) {
+
+				// Grab the lowest f(x) to process next.  Heap keeps this sorted for us.
+				var currentNode = openHeap.pop();
+
+				// End case -- result has been found, return the traced path.
+				if (currentNode === end) {
+					var curr = currentNode;
+					var ret = [];
+					while (curr.parent) {
+						ret.push(curr);
+						curr = curr.parent;
+					}
+					this.cleanUp(ret);
+					return ret.reverse();
+				}
+
+				// Normal case -- move currentNode from open to closed, process each of its neighbours.
+				currentNode.closed = true;
+
+				// Find all neighbours for the current node. Optionally find diagonal neighbours as well (false by default).
+				var neighbours = astar.neighbours(graph, currentNode);
+
+				for (var i = 0, il = neighbours.length; i < il; i++) {
+					var neighbour = neighbours[i];
+
+					if (neighbour.closed) {
+						// Not a valid node to process, skip to next neighbour.
+						continue;
+					}
+
+					// The g score is the shortest distance from start to current node.
+					// We need to check if the path we have arrived at this neighbour is the shortest one we have seen yet.
+					var gScore = currentNode.g + neighbour.cost;
+					var beenVisited = neighbour.visited;
+
+					if (!beenVisited || gScore < neighbour.g) {
+
+						// Found an optimal (so far) path to this node.  Take score for node to see how good it is.
+						neighbour.visited = true;
+						neighbour.parent = currentNode;
+						if (!neighbour.centroid || !end.centroid) debugger;
+						neighbour.h = neighbour.h || astar.heuristic(neighbour.centroid, end.centroid);
+						neighbour.g = gScore;
+						neighbour.f = neighbour.g + neighbour.h;
+
+						if (!beenVisited) {
+							// Pushing to heap will put it in proper place based on the 'f' value.
+							openHeap.push(neighbour);
+						} else {
+							// Already seen the node, but since it has been rescored we need to reorder it in the heap
+							openHeap.rescoreElement(neighbour);
+						}
+					}
+				}
+			}
+
+			// No result was found - empty array signifies failure to find path.
+			return [];
+		},*/
+		heuristic: function (pos1, pos2) {
+			return laya.d3.math.Vector3.distance(pos1.centroid,pos2.centroid);
+		},
+		neighbours: function (graph, node) {
+			var ret = [];
+
+			for (var e = 0; e < node.neighbours.length; e++) {
+				ret.push(graph[node.neighbours[e]]);
+			}
+
+			return ret;
+		}
+	};
+
+
+	var distanceToSquared = function (a, b) {
+
+		var dx = a.x - b.x;
+		var dy = a.y - b.y;
+		var dz = a.z - b.z;
+
+		return dx * dx + dy * dy + dz * dz;
+
+	};
+
+
+	//+ Jonas Raoni Soares Silva
+	//@ http://jsfromhell.com/math/is-point-in-poly [rev. #0]
+	function isPointInPoly(poly, pt) {
+		for (var c = false, i = -1, l = poly.length, j = l - 1; ++i < l; j = i)
+			((poly[i].z <= pt.z && pt.z < poly[j].z) || (poly[j].z <= pt.z && pt.z < poly[i].z)) && (pt.x < (poly[j].x - poly[i].x) * (pt.z - poly[i].z) / (poly[j].z - poly[i].z) + poly[i].x) && (c = !c);
+		return c;
+	}
+
+	function isVectorInPolygon(vector, polygon, vertices) {
+
+		// reference point will be the centroid of the polygon
+		// We need to rotate the vector as well as all the points which the polygon uses
+
+		var center = polygon.centroid;
+
+		var lowestPoint = 100000;
+		var highestPoint = -100000;
+
+		var polygonVertices = [];
+
+		_.each(polygon.vertexIds, function (vId) {
+			lowestPoint = Math.min(vertices[vId].y, lowestPoint);
+			highestPoint = Math.max(vertices[vId].y, highestPoint);
+			polygonVertices.push(vertices[vId]);
+		});
+
+		if (vector.y < highestPoint + 0.5 && vector.y > lowestPoint - 0.5 &&
+			isPointInPoly(polygonVertices, vector)) {
+			return true;
+		}
+		return false;
+	}
+
+
+	function triarea2(a, b, c) {
+		var ax = b.x - a.x;
+		var az = b.z - a.z;
+		var bx = c.x - a.x;
+		var bz = c.z - a.z;
+		return bx * az - ax * bz;
+	}
+
+	function vequal(a, b) {
+		return distanceToSquared(a, b) < 0.00001;
+	}
+
+	function Channel() {
+		this.portals = [];
+	}
+
+	Channel.prototype.push = function (p1, p2) {
+		if (p2 === undefined) p2 = p1;
+		this.portals.push({
+			left: p1,
+			right: p2
+		});
+	};
+
+	Channel.prototype.stringPull = function () {
+		var portals = this.portals;
+		var pts = [];
+		// Init scan state
+		var portalApex, portalLeft, portalRight;
+		var apexIndex = 0,
+			leftIndex = 0,
+			rightIndex = 0;
+
+		portalApex = portals[0].left;
+		portalLeft = portals[0].left;
+		portalRight = portals[0].right;
+
+		// Add start point.
+		pts.push(portalApex);
+
+		for (var i = 1; i < portals.length; i++) {
+			var left = portals[i].left;
+			var right = portals[i].right;
+
+			// Update right vertex.
+			if (triarea2(portalApex, portalRight, right) <= 0.0) {
+				if (vequal(portalApex, portalRight) || triarea2(portalApex, portalLeft, right) > 0.0) {
+					// Tighten the funnel.
+					portalRight = right;
+					rightIndex = i;
+				} else {
+					// Right over left, insert left to path and restart scan from portal left point.
+					pts.push(portalLeft);
+					// Make current left the new apex.
+					portalApex = portalLeft;
+					apexIndex = leftIndex;
+					// Reset portal
+					portalLeft = portalApex;
+					portalRight = portalApex;
+					leftIndex = apexIndex;
+					rightIndex = apexIndex;
+					// Restart scan
+					i = apexIndex;
+					continue;
+				}
+			}
+
+			// Update left vertex.
+			if (triarea2(portalApex, portalLeft, left) >= 0.0) {
+				if (vequal(portalApex, portalLeft) || triarea2(portalApex, portalRight, left) < 0.0) {
+					// Tighten the funnel.
+					portalLeft = left;
+					leftIndex = i;
+				} else {
+					// Left over right, insert right to path and restart scan from portal right point.
+					pts.push(portalRight);
+					// Make current right the new apex.
+					portalApex = portalRight;
+					apexIndex = rightIndex;
+					// Reset portal
+					portalLeft = portalApex;
+					portalRight = portalApex;
+					leftIndex = apexIndex;
+					rightIndex = apexIndex;
+					// Restart scan
+					i = apexIndex;
+					continue;
+				}
+			}
+		}
+
+		if ((pts.length === 0) || (!vequal(pts[pts.length - 1], portals[portals.length - 1].left))) {
+			// Append last point to path.
+			pts.push(portals[portals.length - 1].left);
+		}
+
+		this.path = pts;
+		return pts;
+	};
+
+	var zoneNodes = {};
+	var path = null;
+
+	_.extend(exports, {
+		buildNodes: function (geometry) {
+			var navigationMesh = buildNavigationMesh(geometry);
+
+			var zoneNodes = groupNavMesh(navigationMesh);
+
+			return zoneNodes;
+		},
+		setZoneData: function (zone, data) {
+			zoneNodes[zone] = data;
+		},
+		getGroup: function (zone, position) {
+
+			if (!zoneNodes[zone]) return null;
+
+			var closestNodeGroup = null;
+
+			var distance = Math.pow(50, 2);
+
+			_.each(zoneNodes[zone].groups, function (group, index) {
+				_.each(group, function (node) {
+					var measuredDistance = distanceToSquared(node.centroid, position);
+					if (measuredDistance < distance) {
+						closestNodeGroup = index;
+						distance = measuredDistance;
+					}
+				});
+			});
+
+			return closestNodeGroup;
+		},
+		getRandomNode: function (zone, group, nearPosition, nearRange) {
+
+			if (!zoneNodes[zone]) return new laya.d3.math.Vector3();
+
+			nearPosition = nearPosition || null;
+			nearRange = nearRange || 0;
+
+			var candidates = [];
+
+			var polygons = zoneNodes[zone].groups[group];
+
+			_.each(polygons, function (p) {
+				if (nearPosition && nearRange) {
+					if (distanceToSquared(nearPosition, p.centroid) < nearRange * nearRange) {
+						candidates.push(p.centroid);
+					}
+				} else {
+					candidates.push(p.centroid);
+				}
+			});
+
+			return _.sample(candidates) || new laya.d3.math.Vector3();
+		},
+		findPath: function (startPosition, targetPosition, zone, group) {
+
+			var allNodes = zoneNodes[zone].groups[group];
+			var vertices = zoneNodes[zone].vertices;
+
+			var closestNode = null;
+			var distance = Math.pow(50, 2);
+
+			_.each(allNodes, function (node) {
+				var measuredDistance = distanceToSquared(node.centroid, startPosition);
+				if (measuredDistance < distance) {
+					closestNode = node;
+					distance = measuredDistance;
+				}
+			}, this);
+
+
+			var farthestNode = null;
+			distance = Math.pow(50, 2);
+
+			_.each(allNodes, function (node) {
+				var measuredDistance = distanceToSquared(node.centroid, targetPosition);
+				if (measuredDistance < distance &&
+					isVectorInPolygon(targetPosition, node, vertices)) {
+					farthestNode = node;
+					distance = measuredDistance;
+				}
+			}, this);
+
+			// If we can't find any node, just go straight to the target
+			if (!closestNode || !farthestNode) {
+				return null;
+			}
+			astar.search(allNodes, closestNode, farthestNode);
+			var paths = astar.path;
+
+			var getPortalFromTo = function (a, b) {
+				for (var i = 0; i < a.neighbours.length; i++) {
+					if (a.neighbours[i] === b.id) {
+						return a.portals[i];
+					}
+				}
+			};
+
+			// We got the corridor
+			// Now pull the rope
+
+			var channel = new Channel();
+
+			channel.push(startPosition);
+
+			for (var i = 0; i < paths.length; i++) {
+				var polygon = paths[i];
+
+				var nextPolygon = paths[i + 1];
+
+				if (nextPolygon) {
+					var portals = getPortalFromTo(polygon, nextPolygon);
+					channel.push(
+						vertices[portals[0]],
+						vertices[portals[1]]
+					);
+				}
+
+			}
+
+			channel.push(targetPosition);
+
+			channel.stringPull();
+
+
+			var threeVectors = [];
+
+			_.each(channel.path, function (c) {
+				var vec = new laya.d3.math.Vector3(c.x, c.y, c.z);
+
+				// console.log(vec.clone().sub(startPosition).length());
+
+				// Ensure the intermediate steps aren't too close to the start position
+				// var dist = vec.clone().sub(startPosition).lengthSq();
+				// if (dist > 0.01 * 0.01) {
+					threeVectors.push(vec);
+				// }
+
+
+			});
+
+			// We don't need the first one, as we already know our start position
+			threeVectors.shift();
+
+			return threeVectors;
+		}
+	});
+
+})(typeof exports === 'undefined' ? this['patrol'] = {} : exports);

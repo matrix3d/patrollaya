@@ -1,0 +1,13 @@
+1,0.00,,0,Project command:F:\proj\patrollaya\patrollaya.as3proj;iflash=false;chromerun=false;quickcompile=true
+Project configuration:F:\proj\patrollaya\patrollaya.as3proj.
+1,0.00,,0,output file:patrollaya
+1,0.00,,0,output path:F:/proj/patrollaya/bin/h5/
+1,0.00,,0,Main Class:F:/proj/patrollaya/src/NavTest.as
+1,0.00,F:/proj/patrollaya/src,0,Collect
+1,0.00,F:/proj/patrollaya/libs/laya/src,0,Collect
+1,2.00,,0,read class message
+1,89.95,,0,Disable Flash3D F:/proj/patrollaya/src/NavTest.as
+12,89.95,F:/proj/patrollaya/bin/h5/patrollaya.max.js,2339659,
+11,89.95,F:/proj/patrollaya/bin/h5/patrollaya.max.html,893,
+******************************************************************************
+14,89.95,,0,
