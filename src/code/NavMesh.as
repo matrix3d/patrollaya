@@ -19,14 +19,10 @@ package code
 	 */
 	public class NavMesh extends PrimitiveMesh
 	{
-		private var p:Array;
-		private var i:Array;
-		
-		public function NavMesh(p:Array,i:Array) 
+		private var g:Geometry;
+		public function NavMesh(g:Geometry) 
 		{
-			this.i = i;
-			this.p = p;
-			
+			this.g = g;
 			activeResource();
 			
 			_positions = _getPositions();
@@ -34,7 +30,7 @@ package code
 		}
 		
 		override protected function recreateResource():void {
-			_numberIndices = i.length / 5 * 3;
+			_numberIndices = g.faces.length*3;// i.length / 5 * 3;
 			var vertexDeclaration:VertexDeclaration = VertexPositionNormalColor.vertexDeclaration;
 			
 			var p2:Array = [];
@@ -62,41 +58,43 @@ package code
 				i2.push(k++);
 				i2.push(k++);
 				i2.push(k++);
-				var a:int = i[j * 5 + 2];
-				var b:int = i[j * 5 + 1];
-				var c:int = i[j * 5 + 3];
+				var a:int = g.faces[j].a;
+				var b:int = g.faces[j].c;
+				var c:int = g.faces[j].b;
 				
 				
-				p2.push(p[a * 3]);
-				p2.push(p[a * 3 + 1]);
-				p2.push(p[a * 3 + 2]);
+				p2.push(g.vertices[a].x);
+				p2.push(g.vertices[a].y);
+				p2.push(g.vertices[a].z);
 				p2.push(0);
 				p2.push(1);
 				p2.push(0);
-				var cc:Vector3 = Color.fromHSV(((Math.random()*10)>>0)/10, 1,1);
+				var cc:Vector3 =  getColor(g.vertices[a]);
 				p2.push(cc.x);
 				p2.push(cc.y);
 				p2.push(cc.z);
 				p2.push(1);
 				
-				p2.push(p[b * 3]);
-				p2.push(p[b * 3+1]);
-				p2.push(p[b * 3 + 2]);
+				p2.push(g.vertices[b].x);
+				p2.push(g.vertices[b].y);
+				p2.push(g.vertices[b].z);
 				p2.push(0);
 				p2.push(1);
 				p2.push(0);
+				var cc:Vector3 =  getColor(g.vertices[b]);
 				p2.push(cc.x);
 				p2.push(cc.y);
 				p2.push(cc.z);
 				p2.push(1);
 				
 				
-				p2.push(p[c * 3]);
-				p2.push(p[c * 3+1]);
-				p2.push(p[c * 3 + 2]);
+				p2.push(g.vertices[c].x);
+				p2.push(g.vertices[c].y);
+				p2.push(g.vertices[c].z);
 				p2.push(0);
 				p2.push(1);
 				p2.push(0);
+				var cc:Vector3 =  getColor(g.vertices[c]);
 				p2.push(cc.x);
 				p2.push(cc.y);
 				p2.push(cc.z);
@@ -114,6 +112,9 @@ package code
 			completeCreate();
 		}
 		
+		private function getColor(v):Vector3{
+			return Color.fromHSV((Vector3.scalarLength(v)/20+100)%1, 1,1);
+		}
 	}
 
 }

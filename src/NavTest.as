@@ -11,6 +11,7 @@ package
 	import laya.d3.component.Script;
 	import laya.d3.component.physics.BoxCollider;
 	import laya.d3.component.physics.Collider;
+	import laya.d3.component.physics.MeshCollider;
 	import laya.d3.core.Camera;
 	import laya.d3.core.MeshSprite3D;
 	import laya.d3.core.PhasorSpriter3D;
@@ -43,8 +44,8 @@ package
 	public class NavTest 
 	{
 		
-		private var levelUrl:String = "res/unity/level.ls";
-		private var navUrl:String = "meshes/level2.js";
+		//private var levelUrl:String = "res/unity/level.ls";
+		private var navUrl:String = "meshes/level.nav.js";
 		private var scene:Scene;
 		private var camera:Camera;
 		private var playerNavMeshGroup;
@@ -54,6 +55,7 @@ package
 		private var mesh:BoxMesh;
 		private var material:StandardMaterial;
 		private var agent:NavMeshAgent;
+		private var meshC:MeshCollider;
 		public function NavTest() 
 		{
 			//初始化引擎
@@ -84,7 +86,7 @@ package
 			directionLight.direction = new Vector3(1, -1, 0);
 
 			//添加自定义模型
-			mesh = new BoxMesh(1, 1, 1);
+			mesh = new BoxMesh(.3, .3, .3);
 			player = new MeshSprite3D(mesh) as MeshSprite3D;
 			agent = player.addComponent(NavMeshAgent);
 			agent.speed = 10;
@@ -104,14 +106,66 @@ package
 		
 		private function onNavLoaded():void{
 			var json:Object = Laya.loader.getRes(navUrl);
-			var p2:Array = json.vertices;
-			var ii:Array =  json.faces;var faces:Array = [];
-			for (var i:int = 0; i < ii.length/5;i++ ){
-				faces.push(new Face(ii[i*5+1],ii[i*5+2],ii[i*5+3]));
+			
+			var nUvLayers:int = 0;
+
+			if ( json.uvs ) {
+
+				// disregard empty arrays
+
+				for (var i:int = 0; i < json.uvs.length; i ++ ) {
+					if ( json.uvs[ i ].length ) nUvLayers ++;
+				}
 			}
+			
+			var p2:Array = json.vertices;
+			var ii:Array =  json.faces;
+			var faces:Array = [];
+			/*for (var i:int = 0; i < ii.length/5;i++ ){
+				faces.push(new Face(ii[i*5+1],ii[i*5+2],ii[i*5+3]));
+			}*/
+			
+			var offset:int = 0;
+			var zLength:int = ii.length;
+			while (offset<zLength){
+				var type:int = ii[ offset ++ ];
+				var isQuad:Boolean              = isBitSet( type, 0 );
+				var hasMaterial:Boolean         = isBitSet( type, 1 );
+				var hasFaceVertexUv:Boolean     = isBitSet( type, 3 );
+				var hasFaceNormal:Boolean       = isBitSet( type, 4 );
+				var hasFaceVertexNormal:Boolean = isBitSet( type, 5 );
+				var hasFaceColor:Boolean	     = isBitSet( type, 6 );
+				var hasFaceVertexColor:Boolean  = isBitSet( type, 7 );
+				if (isQuad){
+					// todo
+				}else{
+					faces.push(new Face(ii[offset], ii[offset+1], ii[offset+2]));
+					offset += 3;
+					if (hasMaterial){
+						offset++;
+					}
+					if (hasFaceVertexUv){
+						offset += 3 * nUvLayers;
+					}
+					if (hasFaceNormal){
+						offset++;
+					}
+					if (hasFaceVertexNormal){
+						offset += 3;
+					}
+					if (hasFaceColor){
+						offset++;
+					}
+					if (hasFaceVertexColor){
+						offset += 3;
+					}
+				}
+			}
+			
 			var p = [];
+			var vscale:Number = 1 ;
 			for (i = 0; i < p2.length;i+=3 ){
-				p.push(new Vector3(p2[i],p2[i+1],p2[i+2]));
+				p.push(new Vector3(p2[i]*vscale,p2[i+1]*vscale,p2[i+2]*vscale));
 			}
 			var g:Geometry = new Geometry;
 			g.faces = faces;
@@ -125,10 +179,14 @@ package
 			
 			Laya.stage.on(Event.CLICK, this, onClick);
 			
-			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(p2, ii))
+			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(g));
+			//mesh.transform.scale = new Vector3(10, 10, 10);
 			mesh.meshRender.material = new StandardMaterial;
 			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(1, 0, 0);
-			pathLine=mesh.addComponent(DrawLineScript);
+			pathLine = mesh.addComponent(DrawLineScript);
+			meshC = mesh.addComponent(MeshCollider) as MeshCollider;
+			meshC.mesh = mesh.meshFilter.sharedMesh;
+			
 			scene.addChild(mesh);
 		}
 		
@@ -136,10 +194,18 @@ package
 		{
 			var ray:Ray = new Ray(new Vector3, new Vector3);
 			camera.viewportPointToRay(new Vector2(MouseManager.instance.mouseX, MouseManager.instance.mouseY), ray);
+			
+			///
 			var out:Vector3 = new Vector3;
 			var plane:Plane = new Plane(Vector3.Up, 0);
 			Collision.intersectsRayAndPlaneRP(ray, plane, out);
-			if (out){
+			////plane
+			
+			var _outHitInfo:RaycastHit = new RaycastHit();
+			//Physics.rayCast(ray, _outHitInfo, 30, 0);
+			var flag:Boolean= meshC.raycast(ray, _outHitInfo);
+			if (flag){
+				out = _outHitInfo.position;
 				target.transform.position = out;
 				
 				//bug
@@ -149,6 +215,7 @@ package
 				crowdcitylaya.max.js:1364 10.970426559448242 0 -11.572933197021484
 				crowdcitylaya.max.js:1373 end 10.970426559448242 0 -11.572933197021484*/
 				
+				trace("寻找路径",player.transform.position,target.transform.position);
 				var calculatedPath = Browser.window.patrol.findPath(player.transform.position, target.transform.position, 'level', playerNavMeshGroup);
 
 				
@@ -173,9 +240,17 @@ package
 					trace("end",target.transform.position.x,target.transform.position.y,target.transform.position.z);
 				}else{
 					agent.enabled = false;
+					player.transform.position = out;
+					trace("找不到路径");
 				}
 			}
 		
+		}
+		
+		//threejs model
+		public function isBitSet( value:Number, position:Number ):Boolean {
+			return value & ( 1 << position );
+
 		}
 	}
 

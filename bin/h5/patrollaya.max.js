@@ -205,10 +205,8 @@ var Laya=window.Laya=(function(window,document){
 
 (function(window,document,Laya){
 	var __un=Laya.un,__uns=Laya.uns,__static=Laya.static,__class=Laya.class,__getset=Laya.getset,__newvec=Laya.__newvec;
-Laya.interface('laya.ui.IRender');
 Laya.interface('laya.d3.core.IClone');
 Laya.interface('laya.runtime.IMarket');
-Laya.interface('laya.filters.IFilter');
 Laya.interface('laya.display.ILayout');
 Laya.interface('laya.resource.IDispose');
 Laya.interface('laya.runtime.IConchNode');
@@ -867,78 +865,6 @@ var Geometry=(function(){
 
 /**
 *...
-*@author asanwu
-*/
-//class common.CreateHeightMap
-var CreateHeightMap=(function(){
-	function CreateHeightMap(){
-		//生成高度图的宽度
-		this.width=64;
-		//生成高度图的高度
-		this.height=64;
-		var _$this=this;
-		Laya3D.init(0,0,true);
-		Laya.stage.scaleMode="full";
-		Laya.stage.screenMode="horizontal";
-		var scene=Laya.stage.addChild(new Scene());
-		scene.currentCamera=(scene.addChild(new Camera(0,0.1,2000)));
-		var sceneSprite3d=scene.addChild(Sprite3D.load("maze/maze.lh"));
-		sceneSprite3d.once("hierarchyloaded",this,function(){
-			var v2=new Vector2();
-			var meshSprite3D=sceneSprite3d.getChildAt(0);
-			var heightMap=HeightMap.creatFromMesh(meshSprite3D.meshFilter.sharedMesh,_$this.width,_$this.height,v2);
-			var maxHeight=heightMap.maxHeight;
-			var minHeight=heightMap.minHeight;
-			console.log("-----------------------------");
-			console.log(maxHeight,minHeight);
-			console.log("-----------------------------");
-			var compressionRatio=(maxHeight-minHeight)/ 254;
-			_$this.pringScreen(_$this.width,_$this.height,compressionRatio,minHeight,heightMap);
-		});
-	}
-
-	__class(CreateHeightMap,'common.CreateHeightMap');
-	var __proto=CreateHeightMap.prototype;
-	__proto.pringScreen=function(tWidth,tHeight,cr,min,th){
-		var pixel=Laya.stage.drawToCanvas(tWidth,tHeight,0,0);
-		var tRed=NaN,tGreed=NaN,tBlue=NaN,tAlpha=NaN;
-		tRed=tGreed=tBlue=tAlpha=0xFF;
-		var tStr="";
-		var ncanvas=Browser.createElement('canvas');
-		ncanvas.setAttribute('width',tWidth.toString());
-		ncanvas.setAttribute('height',tHeight.toString());
-		var ctx=ncanvas.getContext("2d");
-		var tI=0;
-		for (var i=0;i < tHeight;i++){
-			for (var j=0;j < tWidth;j++){
-				var oriHeight=th.getHeight(i,j);
-				if (isNaN(oriHeight)){
-					tRed=255;
-					tGreed=255;
-					tBlue=255;
-				}
-				else{
-					var height=Math.round((oriHeight-min)/ cr);
-					tRed=height;
-					tGreed=height;
-					tBlue=height;
-				}
-				tAlpha=1;
-				tStr="rgba("+tRed.toString()+","+tGreed.toString()+","+tBlue.toString()+","+tAlpha.toString()+")";
-				ctx.fillStyle=tStr;
-				ctx.fillRect(j,i,1,1);
-			}
-		};
-		var image=ncanvas.toDataURL("image/png").replace("image/png","image/octet-stream;Content-Disposition: attachment;filename=foobar.png");
-		window.location.href=image;
-	}
-
-	return CreateHeightMap;
-})()
-
-
-/**
-*...
 *@author
 */
 //class common.Tool
@@ -996,8 +922,8 @@ var Tool=(function(){
 //class NavTest
 var NavTest=(function(){
 	function NavTest(){
-		this.levelUrl="res/unity/level.ls";
-		this.navUrl="meshes/level2.js";
+		//private var levelUrl:String="res/unity/level.ls";
+		this.navUrl="meshes/level.nav.js";
 		this.scene=null;
 		this.camera=null;
 		this.player=null;
@@ -1006,6 +932,7 @@ var NavTest=(function(){
 		this.mesh=null;
 		this.material=null;
 		this.agent=null;
+		this.meshC=null;
 		Laya3D.init(0,0,true);
 		Laya.stage.scaleMode="full";
 		Laya.stage.screenMode="none";
@@ -1021,7 +948,7 @@ var NavTest=(function(){
 		var directionLight=this.scene.addChild(new DirectionLight());
 		directionLight.color=new Vector3(0.6,0.6,0.6);
 		directionLight.direction=new Vector3(1,-1,0);
-		this.mesh=new BoxMesh(1,1,1);
+		this.mesh=new BoxMesh(.3,.3,.3);
 		this.player=new MeshSprite3D(this.mesh);
 		this.agent=this.player.addComponent(NavMeshAgent);
 		this.agent.speed=10;
@@ -1042,14 +969,54 @@ var NavTest=(function(){
 	var __proto=NavTest.prototype;
 	__proto.onNavLoaded=function(){
 		var json=Laya.loader.getRes(this.navUrl);
+		var nUvLayers=0;
+		if (json.uvs){
+			for (var i=0;i < json.uvs.length;i++){
+				if (json.uvs[ i].length)nUvLayers++;
+			}
+		};
 		var p2=json.vertices;
-		var ii=json.faces;var faces=[];
-		for (var i=0;i < ii.length/5;i++){
-			faces.push(new Face(ii[i*5+1],ii[i*5+2],ii[i*5+3]));
+		var ii=json.faces;
+		var faces=[];
+		var offset=0;
+		var zLength=ii.length;
+		while (offset<zLength){
+			var type=ii[ offset++];
+			var isQuad=this.isBitSet(type,0);
+			var hasMaterial=this.isBitSet(type,1);
+			var hasFaceVertexUv=this.isBitSet(type,3);
+			var hasFaceNormal=this.isBitSet(type,4);
+			var hasFaceVertexNormal=this.isBitSet(type,5);
+			var hasFaceColor=this.isBitSet(type,6);
+			var hasFaceVertexColor=this.isBitSet(type,7);
+			if (isQuad){
+				}else{
+				faces.push(new Face(ii[offset],ii[offset+1],ii[offset+2]));
+				offset+=3;
+				if (hasMaterial){
+					offset++;
+				}
+				if (hasFaceVertexUv){
+					offset+=3 *nUvLayers;
+				}
+				if (hasFaceNormal){
+					offset++;
+				}
+				if (hasFaceVertexNormal){
+					offset+=3;
+				}
+				if (hasFaceColor){
+					offset++;
+				}
+				if (hasFaceVertexColor){
+					offset+=3;
+				}
+			}
 		};
 		var p=[];
+		var vscale=1;
 		for (i=0;i < p2.length;i+=3){
-			p.push(new Vector3(p2[i],p2[i+1],p2[i+2]));
+			p.push(new Vector3(p2[i]*vscale,p2[i+1]*vscale,p2[i+2]*vscale));
 		};
 		var g=new Geometry;
 		g.faces=faces;
@@ -1058,10 +1025,12 @@ var NavTest=(function(){
 		Browser.window.patrol.setZoneData('level',zoneNodes);
 		this.playerNavMeshGroup=Browser.window.patrol.getGroup('level',new Vector3(-3.5,0.5,5.5));
 		Laya.stage.on("click",this,this.onClick);
-		var mesh=new MeshSprite3D(new NavMesh(p2,ii))
+		var mesh=new MeshSprite3D(new NavMesh(g));
 		mesh.meshRender.material=new StandardMaterial;
 		(mesh.meshRender.material).diffuseColor=new Vector3(1,0,0);
 		this.pathLine=mesh.addComponent(DrawLineScript);
+		this.meshC=mesh.addComponent(MeshCollider);
+		this.meshC.mesh=mesh.meshFilter.sharedMesh;
 		this.scene.addChild(mesh);
 	}
 
@@ -1071,8 +1040,12 @@ var NavTest=(function(){
 		var out=new Vector3;
 		var plane=new Plane(Vector3.Up,0);
 		Collision.intersectsRayAndPlaneRP(ray,plane,out);
-		if (out){
+		var _outHitInfo=new RaycastHit();
+		var flag=this.meshC.raycast(ray,_outHitInfo);
+		if (flag){
+			out=_outHitInfo.position;
 			this.target.transform.position=out;
+			console.log("寻找路径",this.player.transform.position,this.target.transform.position);
 			var calculatedPath=Browser.window.patrol.findPath(this.player.transform.position,this.target.transform.position,'level',this.playerNavMeshGroup);
 			if (calculatedPath && calculatedPath.length){
 				var debugPath=(calculatedPath);
@@ -1091,8 +1064,15 @@ var NavTest=(function(){
 				console.log("end",this.target.transform.position.x,this.target.transform.position.y,this.target.transform.position.z);
 				}else{
 				this.agent.enabled=false;
+				this.player.transform.position=out;
+				console.log("找不到路径");
 			}
 		}
+	}
+
+	//threejs model
+	__proto.isBitSet=function(value,position){
+		return value & (1 << position);
 	}
 
 	return NavTest;
@@ -3818,182 +3798,6 @@ var SplineCurvePositionVelocity=(function(){
 	}
 
 	return SplineCurvePositionVelocity;
-})()
-
-
-/**
-*<code>HeightMap</code> 类用于实现高度图数据。
-*/
-//class laya.d3.core.HeightMap
-var HeightMap=(function(){
-	function HeightMap(width,height,minHeight,maxHeight){
-		/**@private */
-		this._datas=null;
-		/**@private */
-		this._w=0;
-		/**@private */
-		this._h=0;
-		/**@private */
-		this._minHeight=NaN;
-		/**@private */
-		this._maxHeight=NaN;
-		this._datas=[];
-		this._w=width;
-		this._h=height;
-		this._minHeight=minHeight;
-		this._maxHeight=maxHeight;
-	}
-
-	__class(HeightMap,'laya.d3.core.HeightMap');
-	var __proto=HeightMap.prototype;
-	/**@private */
-	__proto._inBounds=function(row,col){
-		return row >=0 && row < this._h && col >=0 && col < this._w;
-	}
-
-	/**
-	*获取高度。
-	*@param row 列数。
-	*@param col 行数。
-	*@return 高度。
-	*/
-	__proto.getHeight=function(row,col){
-		if (this._inBounds(row,col))
-			return this._datas[row][col];
-		else
-		return NaN;
-	}
-
-	/**
-	*获取宽度。
-	*@return value 宽度。
-	*/
-	__getset(0,__proto,'width',function(){
-		return this._w;
-	});
-
-	/**
-	*获取高度。
-	*@return value 高度。
-	*/
-	__getset(0,__proto,'height',function(){
-		return this._h;
-	});
-
-	/**
-	*最大高度。
-	*@return value 最大高度。
-	*/
-	__getset(0,__proto,'maxHeight',function(){
-		return this._maxHeight;
-	});
-
-	/**
-	*最大高度。
-	*@return value 最大高度。
-	*/
-	__getset(0,__proto,'minHeight',function(){
-		return this._minHeight;
-	});
-
-	HeightMap.creatFromMesh=function(mesh,width,height,outCellSize){
-		var vertices=[];
-		var indexs=[];
-		var submesheCount=mesh.getSubMeshCount();
-		for (var i=0;i < submesheCount;i++){
-			var subMesh=mesh.getSubMesh(i);
-			var vertexBuffer=subMesh._getVertexBuffer();
-			var verts=vertexBuffer.getData();
-			var subMeshVertices=[];
-			for (var j=0;j < verts.length;j+=vertexBuffer.vertexDeclaration.vertexStride / 4){
-				var position=new Vector3(verts[j+0],verts[j+1],verts[j+2]);
-				subMeshVertices.push(position);
-			}
-			vertices.push(subMeshVertices);
-			var ib=subMesh._getIndexBuffer();
-			indexs.push(ib.getData());
-		};
-		var boundingBox=mesh.boundingBox;
-		var minX=boundingBox.min.x;
-		var minZ=boundingBox.min.z;
-		var maxX=boundingBox.max.x;
-		var maxZ=boundingBox.max.z;
-		var minY=boundingBox.min.y;
-		var maxY=boundingBox.max.y;
-		var widthSize=maxX-minX;
-		var heightSize=maxZ-minZ;
-		var cellWidth=outCellSize.elements[0]=widthSize / (width-1);
-		var cellHeight=outCellSize.elements[1]=heightSize / (height-1);
-		var heightMap=new HeightMap(width,height,minY,maxY);
-		var ray=HeightMap._tempRay;
-		var rayDirE=ray.direction.elements;
-		rayDirE[0]=0;
-		rayDirE[1]=-1;
-		rayDirE[2]=0;
-		var heightOffset=0.1;
-		var rayY=maxY+heightOffset;
-		ray.origin.elements[1]=rayY;
-		for (var h=0;h < height;h++){
-			var posZ=minZ+h *cellHeight;
-			heightMap._datas[h]=[];
-			for (var w=0;w < width;w++){
-				var posX=minX+w *cellWidth;
-				var rayOriE=ray.origin.elements;
-				rayOriE[0]=posX;
-				rayOriE[2]=posZ;
-				var closestIntersection=HeightMap._getPosition(ray,vertices,indexs);
-				heightMap._datas[h][w]=(closestIntersection===Number.MAX_VALUE)? NaN :rayY-closestIntersection;
-			}
-		}
-		return heightMap;
-	}
-
-	HeightMap.createFromImage=function(texture,minHeight,maxHeight){
-		var textureWidth=texture.width;
-		var textureHeight=texture.height;
-		var heightMap=new HeightMap(textureWidth,textureHeight,minHeight,maxHeight);
-		var compressionRatio=(maxHeight-minHeight)/ 254;
-		var pixelsInfo=texture.getPixels();
-		var index=0;
-		for (var h=0;h <textureHeight;h++){
-			var colDatas=heightMap._datas[h]=[];
-			for (var w=0;w < textureWidth;w++){
-				var r=pixelsInfo[index++];
-				var g=pixelsInfo[index++];
-				var b=pixelsInfo[index++];
-				var a=pixelsInfo[index++];
-				if (r==255 && g==255 && b==255 && a==255)
-					colDatas[w]=NaN;
-				else {
-					colDatas[w]=(r+g+b)/ 3 *compressionRatio+minHeight;
-				}
-			}
-		}
-		return heightMap;
-	}
-
-	HeightMap._getPosition=function(ray,vertices,indexs){
-		var closestIntersection=Number.MAX_VALUE;
-		for (var i=0;i < vertices.length;i++){
-			var subMeshVertices=vertices[i];
-			var subMeshIndexes=indexs[i];
-			for (var j=0;j < subMeshIndexes.length;j+=3){
-				var vertex1=subMeshVertices[subMeshIndexes[j+0]];
-				var vertex2=subMeshVertices[subMeshIndexes[j+1]];
-				var vertex3=subMeshVertices[subMeshIndexes[j+2]];
-				var intersection=Picker.rayIntersectsTriangle(ray,vertex1,vertex2,vertex3);
-				if (!isNaN(intersection)&& intersection < closestIntersection){
-					closestIntersection=intersection;
-				}
-			}
-		}
-		return closestIntersection;
-	}
-
-	__static(HeightMap,
-	['_tempRay',function(){return this._tempRay=new Ray(new Vector3(),new Vector3());}
-	]);
-	return HeightMap;
 })()
 
 
@@ -26294,127 +26098,6 @@ var System=(function(){
 })()
 
 
-/**
-*<code>LayoutStyle</code> 是一个布局样式类。
-*/
-//class laya.ui.LayoutStyle
-var LayoutStyle=(function(){
-	function LayoutStyle(){
-		/**一个布尔值，表示是否有效。*/
-		this.enable=false;
-		this.top=NaN;
-		this.bottom=NaN;
-		this.left=NaN;
-		this.right=NaN;
-		this.centerX=NaN;
-		this.centerY=NaN;
-		this.anchorX=NaN;
-		this.anchorY=NaN;
-	}
-
-	__class(LayoutStyle,'laya.ui.LayoutStyle');
-	__static(LayoutStyle,
-	['EMPTY',function(){return this.EMPTY=new LayoutStyle();}
-	]);
-	return LayoutStyle;
-})()
-
-
-/**
-*<code>Styles</code> 定义了组件常用的样式属性。
-*/
-//class laya.ui.Styles
-var Styles=(function(){
-	function Styles(){}
-	__class(Styles,'laya.ui.Styles');
-	Styles.labelColor="#000000";
-	Styles.buttonStateNum=3;
-	Styles.scrollBarMinNum=15;
-	Styles.scrollBarDelayTime=500;
-	__static(Styles,
-	['defaultSizeGrid',function(){return this.defaultSizeGrid=[4,4,4,4,0];},'labelPadding',function(){return this.labelPadding=[2,2,2,2];},'inputLabelPadding',function(){return this.inputLabelPadding=[1,1,1,3];},'buttonLabelColors',function(){return this.buttonLabelColors=["#32556b","#32cc6b","#ff0000","#C0C0C0"];},'comboBoxItemColors',function(){return this.comboBoxItemColors=["#5e95b6","#ffffff","#000000","#8fa4b1","#ffffff"];}
-	]);
-	return Styles;
-})()
-
-
-/**
-*<code>UIUtils</code> 是文本工具集。
-*/
-//class laya.ui.UIUtils
-var UIUtils=(function(){
-	function UIUtils(){}
-	__class(UIUtils,'laya.ui.UIUtils');
-	UIUtils.fillArray=function(arr,str,type){
-		var temp=arr.concat();
-		if (str){
-			var a=str.split(",");
-			for (var i=0,n=Math.min(temp.length,a.length);i < n;i++){
-				var value=a[i];
-				temp[i]=(value=="true" ? true :(value=="false" ? false :value));
-				if (type !=null)temp[i]=type(value);
-			}
-		}
-		return temp;
-	}
-
-	UIUtils.toColor=function(color){
-		return Utils.toHexColor(color);
-	}
-
-	UIUtils.gray=function(traget,isGray){
-		(isGray===void 0)&& (isGray=true);
-		if (isGray){
-			UIUtils.addFilter(traget,UIUtils.grayFilter);
-			}else {
-			UIUtils.clearFilter(traget,ColorFilter);
-		}
-	}
-
-	UIUtils.addFilter=function(target,filter){
-		var filters=target.filters || [];
-		filters.push(filter);
-		target.filters=filters;
-	}
-
-	UIUtils.clearFilter=function(target,filterType){
-		var filters=target.filters;
-		if (filters !=null && filters.length > 0){
-			for (var i=filters.length-1;i >-1;i--){
-				var filter=filters[i];
-				if (Laya.__typeof(filter,filterType))filters.splice(i,1);
-			}
-			target.filters=filters;
-		}
-	}
-
-	UIUtils._getReplaceStr=function(word){
-		return UIUtils.escapeSequence[word];
-	}
-
-	UIUtils.adptString=function(str){
-		return str.replace(/\\(\w)/g,UIUtils._getReplaceStr);
-	}
-
-	UIUtils.getBindFun=function(value){
-		var fun=UIUtils._funMap.get(value);
-		if (fun==null){
-			var temp="\""+value+"\"";
-			temp=temp.replace(/^"\${|}"$/g,"").replace(/\${/g,"\"+").replace(/}/g,"+\"");
-			var str="(function(data){if(data==null)return;with(data){try{\nreturn "+temp+"\n}catch(e){}}})";
-			fun=Laya._runScript(str);
-			UIUtils._funMap.set(value,fun);
-		}
-		return fun;
-	}
-
-	__static(UIUtils,
-	['grayFilter',function(){return this.grayFilter=new ColorFilter([0.3086,0.6094,0.082,0,0,0.3086,0.6094,0.082,0,0,0.3086,0.6094,0.082,0,0,0,0,0,1,0]);},'escapeSequence',function(){return this.escapeSequence={"\\n":"\n","\\t":"\t"};},'_funMap',function(){return this._funMap=new WeakObject();}
-	]);
-	return UIUtils;
-})()
-
-
 SoundManager;
 /**
 *<code>Browser</code> 是浏览器代理类。封装浏览器及原生 js 提供的一些功能。
@@ -37019,49 +36702,6 @@ var BaseRender=(function(_super){
 
 
 /**
-*@private
-*/
-//class laya.ani.GraphicsAni extends laya.display.Graphics
-var GraphicsAni=(function(_super){
-	function GraphicsAni(){
-		GraphicsAni.__super.call(this);
-		if (Render.isConchNode){
-			this["drawSkin"]=function (skin){
-				skin.transform || (skin.transform=Matrix.EMPTY);
-				this._addCmd([skin]);
-				this.setSkinMesh&&this.setSkinMesh(skin._ps,skin.mVBData,skin.mEleNum,0,skin.mTexture,skin.transform);
-			};
-		}
-	}
-
-	__class(GraphicsAni,'laya.ani.GraphicsAni',_super);
-	var __proto=GraphicsAni.prototype;
-	/**
-	*@private
-	*画自定义蒙皮动画
-	*@param skin
-	*/
-	__proto.drawSkin=function(skin){
-		var arr=[skin];
-		this._saveToCmd(Render._context._drawSkin,arr);
-	}
-
-	GraphicsAni.create=function(){
-		var rs=GraphicsAni._caches.pop();
-		return rs||new GraphicsAni();
-	}
-
-	GraphicsAni.recycle=function(graphics){
-		graphics.clear();
-		GraphicsAni._caches.push(graphics);
-	}
-
-	GraphicsAni._caches=[];
-	return GraphicsAni;
-})(Graphics)
-
-
-/**
 *<code>Transform3D</code> 类用于实现3D变换。
 */
 //class laya.d3.core.Transform3D extends laya.events.EventDispatcher
@@ -41827,22 +41467,6 @@ var ColorFilterActionGL=(function(_super){
 
 	return ColorFilterActionGL;
 })(FilterActionGL)
-
-
-/**
-*<code>UIEvent</code> 类用来定义UI组件类的事件类型。
-*/
-//class laya.ui.UIEvent extends laya.events.Event
-var UIEvent=(function(_super){
-	function UIEvent(){
-		UIEvent.__super.call(this);;
-	}
-
-	__class(UIEvent,'laya.ui.UIEvent',_super);
-	UIEvent.SHOW_TIP="showtip";
-	UIEvent.HIDE_TIP="hidetip";
-	return UIEvent;
-})(Event)
 
 
 //class laya.webgl.shader.d2.value.Value2D extends laya.webgl.shader.ShaderValue
@@ -53569,39 +53193,6 @@ var DrawLineScript=(function(_super){
 })(Script)
 
 
-//class ColliderScript extends laya.d3.component.Script
-var ColliderScript=(function(_super){
-	function ColliderScript(){
-		this._color=new Vector4(1,0,0,1);
-		this._tempColor1=new Vector4(2.5,2.5,2.5,1);
-		this._tempColor2=new Vector4(0.4,0.4,0.4,1);
-		ColliderScript.__super.call(this);
-	}
-
-	__class(ColliderScript,'ColliderScript',_super);
-	var __proto=ColliderScript.prototype;
-	__proto.onTriggerEnter=function(other){
-		_super.prototype.onTriggerEnter.call(this,other);
-		var mat=(other._owner).meshRender.material;
-		Vector4.multiply(mat.albedoColor,this._tempColor1,this._color);
-		mat.albedoColor=new Vector4(this._color.x,this._color.y,this._color.z,this._color.w);
-	}
-
-	__proto.onTriggerExit=function(other){
-		_super.prototype.onTriggerExit.call(this,other);
-		var mat=(other._owner).meshRender.material;
-		Vector4.multiply(mat.albedoColor,this._tempColor2,this._color);
-		mat.albedoColor=new Vector4(this._color.x,this._color.y,this._color.z,this._color.w);
-	}
-
-	__proto.onTriggerStay=function(other){
-		_super.prototype.onTriggerStay.call(this,other);
-	}
-
-	return ColliderScript;
-})(Script)
-
-
 /**
 *...
 *@author ...
@@ -53646,40 +53237,6 @@ var DrawBoxColliderScript=(function(_super){
 	}
 
 	return DrawBoxColliderScript;
-})(Script)
-
-
-//class common.SceneScript extends laya.d3.component.Script
-var SceneScript=(function(_super){
-	function SceneScript(){
-		this.phasorSpriter3D=null;
-		this.camera=null;
-		SceneScript.__super.call(this);
-		this.originPosition=new Vector3(0,-1,1);
-		this._color=new Vector4(1,0,0,1);
-		this.point=new Vector2();
-		this.ray=new Ray(new Vector3(0,0,0),new Vector3(0,0,0));
-	}
-
-	__class(SceneScript,'common.SceneScript',_super);
-	var __proto=SceneScript.prototype;
-	__proto._start=function(state){
-		laya.d3.component.Component3D.prototype._start.call(this,state);
-		this.phasorSpriter3D=new PhasorSpriter3D();
-		this.camera=this._owner.getChildByName("camera");
-	}
-
-	__proto._postRenderUpdate=function(state){
-		this._update(state);
-		this.point.elements[0]=Laya.stage.mouseX;
-		this.point.elements[1]=Laya.stage.mouseY;
-		this.camera.viewportPointToRay(this.point,this.ray);
-		this.phasorSpriter3D.begin(0x0001,this.camera);
-		this.phasorSpriter3D.line(this.ray.origin,this._color,this.originPosition,this._color);
-		this.phasorSpriter3D.end();
-	}
-
-	return SceneScript;
 })(Script)
 
 
@@ -55159,6 +54716,278 @@ var GlitterMaterial=(function(_super){
 })(BaseMaterial)
 
 
+//class laya.d3.core.material.PBRMaterial extends laya.d3.core.material.BaseMaterial
+var PBRMaterial=(function(_super){
+	function PBRMaterial(){
+		/**@private */
+		this._transformUV=null;
+		PBRMaterial.__super.call(this);
+		if (!laya.d3.core.material.PBRMaterial.pbrlutTex){
+			var lutdt=Browser.window['__pbrlutdata'];
+			if (!lutdt){
+				alert('no pbr lutdata, need pbrlut.js');
+				throw 'no pbr lutdata, need pbrlut.js';
+			};
+			var luttex=DataTexture2D.create((new Uint32Array(lutdt)).buffer,256,256,0x2600,0x2600,false);
+			laya.d3.core.material.PBRMaterial.pbrlutTex=luttex;
+		}
+		this._setTexture(4,laya.d3.core.material.PBRMaterial.pbrlutTex);
+		this.setShaderName("PBR");
+		this._setNumber(0,0.5);
+		this.use_groundtruth=false;
+	}
+
+	__class(PBRMaterial,'laya.d3.core.material.PBRMaterial',_super);
+	var __proto=PBRMaterial.prototype;
+	/**
+	*禁用灯光。
+	*/
+	__proto.disableLight=function(){
+		this._addDisablePublicShaderDefine(ShaderCompile3D.SHADERDEFINE_POINTLIGHT | ShaderCompile3D.SHADERDEFINE_SPOTLIGHT | ShaderCompile3D.SHADERDEFINE_DIRECTIONLIGHT);
+	}
+
+	/**
+	*禁用雾化。
+	*/
+	__proto.disableFog=function(){
+		this._addDisablePublicShaderDefine(ShaderCompile3D.SHADERDEFINE_FOG);
+	}
+
+	__proto.onAsynLoaded=function(url,data,params){
+		_super.prototype.onAsynLoaded.call(this,url,data,params);
+	}
+
+	/**
+	*vdc算法产生的序列。这个比random要均匀一些。
+	*/
+	__proto.radicalInverse_VdC=function(bits){
+		var tmpUint=new Uint32Array(1);
+		return (function(bits){
+			bits=(bits << 16)| (bits >>> 16);
+			bits=((bits & 0x55555555)<< 1)| ((bits & 0xAAAAAAAA)>>> 1);
+			bits=((bits & 0x33333333)<< 2)| ((bits & 0xCCCCCCCC)>>> 2);
+			bits=((bits & 0x0F0F0F0F)<< 4)| ((bits & 0xF0F0F0F0)>>> 4);
+			bits=((bits & 0x00FF00FF)<< 8)| ((bits & 0xFF00FF00)>>> 8);
+			tmpUint[0]=bits;
+			return tmpUint[0] *2.3283064365386963e-10;
+		})(bits);
+	}
+
+	/**
+	*
+	*/
+	__proto.createHammersleyTex=function(w,h){
+		var ret=new Uint8Array(w *h *4);
+		var ri=0;
+		var ci=0;
+		for (ci=0;ci < w *h;ci++){
+			var v=this.radicalInverse_VdC(ci);
+			ret[ri++]=v *255;
+			ret[ri++]=0;
+			ret[ri++]=0;
+			ret[ri++]=255;
+		}
+		return ret;
+	}
+
+	/**
+	*设置法线贴图。
+	*@param value 法线贴图。
+	*/
+	/**
+	*获取法线贴图。
+	*@return 法线贴图。
+	*/
+	__getset(0,__proto,'normalTexture',function(){
+		return this._getTexture(2);
+		},function(value){
+		this._setTexture(2,value);
+	});
+
+	__getset(0,__proto,'has_tangent',null,function(v){
+		this._addShaderDefine(PBRMaterial.SHADERDEFINE_HAS_TANGENT);
+	});
+
+	/**
+	*设置粗糙度的值，0为特别光滑，1为特别粗糙。
+	*@param value 粗糙度。
+	*/
+	/**
+	*获取粗糙度的值，0为特别光滑，1为特别粗糙。
+	*@return 粗糙度的值。
+	*/
+	__getset(0,__proto,'roughness',function(){
+		return this._getNumber(6);
+		},function(value){
+		this._setNumber(6,value);
+		this._addShaderDefine(PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS);
+	});
+
+	__getset(0,__proto,'metaless',function(){
+		return this._getNumber(7);
+		},function(v){
+		this._setNumber(7,v);
+		this._addShaderDefine(PBRMaterial.SHADERDEFINE_FIX_METALESS);
+	});
+
+	/**
+	*设置PBRLUT贴图。
+	*@param value PBRLUT贴图。
+	*/
+	/**
+	*获取PBRLUT贴图。
+	*@return PBRLUT贴图。
+	*/
+	__getset(0,__proto,'pbrlutTexture',function(){
+		return this._getTexture(4);
+		},function(value){
+		this._setTexture(4,value);
+	});
+
+	__getset(0,__proto,'use_groundtruth',null,function(v){
+		if (v){
+			this._addShaderDefine(PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH);
+			if (!laya.d3.core.material.PBRMaterial.HammersleyNoiseTex){
+				var texdata=this.createHammersleyTex(32,32);
+				laya.d3.core.material.PBRMaterial.HammersleyNoiseTex=DataTexture2D.create(texdata.buffer,32,32,0x2600,0x2600,false);
+			}
+			this._setTexture(15,PBRMaterial.HammersleyNoiseTex);
+			}else {
+			laya.d3.core.material.PBRMaterial.HammersleyNoiseTex=null;
+			this._removeShaderDefine(PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH);
+		}
+	});
+
+	/**
+	*设置UV变换。
+	*@param value UV变换。
+	*/
+	/**
+	*获取UV变换。
+	*@return UV变换。
+	*/
+	__getset(0,__proto,'transformUV',function(){
+		return this._transformUV;
+		},function(value){
+		this._transformUV=value;
+		this._setMatrix4x4(8,value.matrix);
+		if (this._conchMaterial){
+			this._conchMaterial.setShaderValue(8,value.matrix.elements,0);
+		}
+	});
+
+	/**
+	*设置漫反射贴图。
+	*@param value 漫反射贴图。
+	*/
+	/**
+	*获取漫反射贴图。
+	*@return 漫反射贴图。
+	*/
+	__getset(0,__proto,'diffuseTexture',function(){
+		return this._getTexture(1);
+		},function(value){
+		this._setTexture(1,value);
+	});
+
+	__getset(0,__proto,'renderMode',null,function(value){
+		switch (value){
+			case 1:
+				this.renderQueue=2000;
+				this.depthWrite=true;
+				this.cull=2;
+				this.blend=0;
+				this.alphaTest=false;
+				break ;
+			case 2:
+				this.renderQueue=2000;
+				this.depthWrite=true;
+				this.cull=0;
+				this.blend=0;
+				this.alphaTest=false;
+				break ;
+			case 3:
+				this.depthWrite=true;
+				this.cull=2;
+				this.blend=0;
+				this.renderQueue=2000;
+				break ;
+			case 13:
+				this.renderQueue=3000;
+				this.depthWrite=true;
+				this.cull=2;
+				this.blend=1;
+				this.srcBlend=0x0302;
+				this.dstBlend=0x0303;
+				break ;
+			default :
+				throw new Error("PBRMaterial:renderMode value error.");
+			}
+	});
+
+	/**
+	*设置pbr信息贴图。
+	*@param value pbr信息贴图。
+	*/
+	/**
+	*获取pbr信息贴图。
+	*@return pbr信息贴图。
+	*/
+	__getset(0,__proto,'pbrInfoTexture',function(){
+		return this._getTexture(3);
+		},function(value){
+		this._setTexture(3,value);
+		this._addShaderDefine(PBRMaterial.SHADERDEFINE_HAS_PBRINFO);
+	});
+
+	__getset(0,__proto,'testClipZ',null,function(v){
+		this._addShaderDefine(PBRMaterial.SHADERDEFINE_TEST_CLIPZ);
+	});
+
+	PBRMaterial.__init__=function(){
+		PBRMaterial.SHADERDEFINE_FIX_METALESS=PBRMaterial.shaderDefines.registerDefine("FIX_METALESS");
+		PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS=PBRMaterial.shaderDefines.registerDefine("FIX_ROUGHNESS");
+		PBRMaterial.SHADERDEFINE_HAS_TANGENT=PBRMaterial.shaderDefines.registerDefine("HAS_TANGENT");
+		PBRMaterial.SHADERDEFINE_HAS_PBRINFO=PBRMaterial.shaderDefines.registerDefine("HAS_PBRINFO");
+		PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH=PBRMaterial.shaderDefines.registerDefine("USE_GROUNDTRUTH");
+		PBRMaterial.SHADERDEFINE_TEST_CLIPZ=PBRMaterial.shaderDefines.registerDefine("CLIPZ");
+	}
+
+	PBRMaterial.load=function(url){
+		return Laya.loader.create(url,null,null,PBRMaterial);
+	}
+
+	PBRMaterial.DIFFUSETEXTURE=1;
+	PBRMaterial.NORMALTEXTURE=2;
+	PBRMaterial.PBRINFOTEXTURE=3;
+	PBRMaterial.PBRLUTTEXTURE=4;
+	PBRMaterial.UVANIAGE=5;
+	PBRMaterial.MATERIALROUGHNESS=6;
+	PBRMaterial.MATERIALMETALESS=7;
+	PBRMaterial.UVMATRIX=8;
+	PBRMaterial.UVAGE=9;
+	PBRMaterial.AOOBJPOS=14;
+	PBRMaterial.HSNOISETEXTURE=15;
+	PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS=0;
+	PBRMaterial.SHADERDEFINE_FIX_METALESS=0;
+	PBRMaterial.SHADERDEFINE_HAS_TANGENT=0;
+	PBRMaterial.SHADERDEFINE_TEST_CLIPZ=0;
+	PBRMaterial.SHADERDEFINE_HAS_PBRINFO=0;
+	PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH=0;
+	PBRMaterial.RENDERMODE_OPAQUE=1;
+	PBRMaterial.RENDERMODE_OPAQUEDOUBLEFACE=2;
+	PBRMaterial.RENDERMODE_CUTOUT=3;
+	PBRMaterial.RENDERMODE_CUTOUTDOUBLEFACE=4;
+	PBRMaterial.RENDERMODE_TRANSPARENT=13;
+	PBRMaterial.pbrlutTex=null;
+	PBRMaterial.HammersleyNoiseTex=null;
+	__static(PBRMaterial,
+	['defaultMaterial',function(){return this.defaultMaterial=new PBRMaterial();},'shaderDefines',function(){return this.shaderDefines=new ShaderDefines(BaseMaterial.shaderDefines);}
+	]);
+	return PBRMaterial;
+})(BaseMaterial)
+
+
 /**
 *<code>Sprite3D</code> 类用于实现3D精灵。
 */
@@ -55994,278 +55823,6 @@ var Sprite3D=(function(_super){
 	Sprite3D._nameNumberCounter=0;
 	return Sprite3D;
 })(ComponentNode)
-
-
-//class laya.d3.core.material.PBRMaterial extends laya.d3.core.material.BaseMaterial
-var PBRMaterial=(function(_super){
-	function PBRMaterial(){
-		/**@private */
-		this._transformUV=null;
-		PBRMaterial.__super.call(this);
-		if (!laya.d3.core.material.PBRMaterial.pbrlutTex){
-			var lutdt=Browser.window['__pbrlutdata'];
-			if (!lutdt){
-				alert('no pbr lutdata, need pbrlut.js');
-				throw 'no pbr lutdata, need pbrlut.js';
-			};
-			var luttex=DataTexture2D.create((new Uint32Array(lutdt)).buffer,256,256,0x2600,0x2600,false);
-			laya.d3.core.material.PBRMaterial.pbrlutTex=luttex;
-		}
-		this._setTexture(4,laya.d3.core.material.PBRMaterial.pbrlutTex);
-		this.setShaderName("PBR");
-		this._setNumber(0,0.5);
-		this.use_groundtruth=false;
-	}
-
-	__class(PBRMaterial,'laya.d3.core.material.PBRMaterial',_super);
-	var __proto=PBRMaterial.prototype;
-	/**
-	*禁用灯光。
-	*/
-	__proto.disableLight=function(){
-		this._addDisablePublicShaderDefine(ShaderCompile3D.SHADERDEFINE_POINTLIGHT | ShaderCompile3D.SHADERDEFINE_SPOTLIGHT | ShaderCompile3D.SHADERDEFINE_DIRECTIONLIGHT);
-	}
-
-	/**
-	*禁用雾化。
-	*/
-	__proto.disableFog=function(){
-		this._addDisablePublicShaderDefine(ShaderCompile3D.SHADERDEFINE_FOG);
-	}
-
-	__proto.onAsynLoaded=function(url,data,params){
-		_super.prototype.onAsynLoaded.call(this,url,data,params);
-	}
-
-	/**
-	*vdc算法产生的序列。这个比random要均匀一些。
-	*/
-	__proto.radicalInverse_VdC=function(bits){
-		var tmpUint=new Uint32Array(1);
-		return (function(bits){
-			bits=(bits << 16)| (bits >>> 16);
-			bits=((bits & 0x55555555)<< 1)| ((bits & 0xAAAAAAAA)>>> 1);
-			bits=((bits & 0x33333333)<< 2)| ((bits & 0xCCCCCCCC)>>> 2);
-			bits=((bits & 0x0F0F0F0F)<< 4)| ((bits & 0xF0F0F0F0)>>> 4);
-			bits=((bits & 0x00FF00FF)<< 8)| ((bits & 0xFF00FF00)>>> 8);
-			tmpUint[0]=bits;
-			return tmpUint[0] *2.3283064365386963e-10;
-		})(bits);
-	}
-
-	/**
-	*
-	*/
-	__proto.createHammersleyTex=function(w,h){
-		var ret=new Uint8Array(w *h *4);
-		var ri=0;
-		var ci=0;
-		for (ci=0;ci < w *h;ci++){
-			var v=this.radicalInverse_VdC(ci);
-			ret[ri++]=v *255;
-			ret[ri++]=0;
-			ret[ri++]=0;
-			ret[ri++]=255;
-		}
-		return ret;
-	}
-
-	/**
-	*设置法线贴图。
-	*@param value 法线贴图。
-	*/
-	/**
-	*获取法线贴图。
-	*@return 法线贴图。
-	*/
-	__getset(0,__proto,'normalTexture',function(){
-		return this._getTexture(2);
-		},function(value){
-		this._setTexture(2,value);
-	});
-
-	__getset(0,__proto,'has_tangent',null,function(v){
-		this._addShaderDefine(PBRMaterial.SHADERDEFINE_HAS_TANGENT);
-	});
-
-	/**
-	*设置粗糙度的值，0为特别光滑，1为特别粗糙。
-	*@param value 粗糙度。
-	*/
-	/**
-	*获取粗糙度的值，0为特别光滑，1为特别粗糙。
-	*@return 粗糙度的值。
-	*/
-	__getset(0,__proto,'roughness',function(){
-		return this._getNumber(6);
-		},function(value){
-		this._setNumber(6,value);
-		this._addShaderDefine(PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS);
-	});
-
-	__getset(0,__proto,'metaless',function(){
-		return this._getNumber(7);
-		},function(v){
-		this._setNumber(7,v);
-		this._addShaderDefine(PBRMaterial.SHADERDEFINE_FIX_METALESS);
-	});
-
-	/**
-	*设置PBRLUT贴图。
-	*@param value PBRLUT贴图。
-	*/
-	/**
-	*获取PBRLUT贴图。
-	*@return PBRLUT贴图。
-	*/
-	__getset(0,__proto,'pbrlutTexture',function(){
-		return this._getTexture(4);
-		},function(value){
-		this._setTexture(4,value);
-	});
-
-	__getset(0,__proto,'use_groundtruth',null,function(v){
-		if (v){
-			this._addShaderDefine(PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH);
-			if (!laya.d3.core.material.PBRMaterial.HammersleyNoiseTex){
-				var texdata=this.createHammersleyTex(32,32);
-				laya.d3.core.material.PBRMaterial.HammersleyNoiseTex=DataTexture2D.create(texdata.buffer,32,32,0x2600,0x2600,false);
-			}
-			this._setTexture(15,PBRMaterial.HammersleyNoiseTex);
-			}else {
-			laya.d3.core.material.PBRMaterial.HammersleyNoiseTex=null;
-			this._removeShaderDefine(PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH);
-		}
-	});
-
-	/**
-	*设置UV变换。
-	*@param value UV变换。
-	*/
-	/**
-	*获取UV变换。
-	*@return UV变换。
-	*/
-	__getset(0,__proto,'transformUV',function(){
-		return this._transformUV;
-		},function(value){
-		this._transformUV=value;
-		this._setMatrix4x4(8,value.matrix);
-		if (this._conchMaterial){
-			this._conchMaterial.setShaderValue(8,value.matrix.elements,0);
-		}
-	});
-
-	/**
-	*设置漫反射贴图。
-	*@param value 漫反射贴图。
-	*/
-	/**
-	*获取漫反射贴图。
-	*@return 漫反射贴图。
-	*/
-	__getset(0,__proto,'diffuseTexture',function(){
-		return this._getTexture(1);
-		},function(value){
-		this._setTexture(1,value);
-	});
-
-	__getset(0,__proto,'renderMode',null,function(value){
-		switch (value){
-			case 1:
-				this.renderQueue=2000;
-				this.depthWrite=true;
-				this.cull=2;
-				this.blend=0;
-				this.alphaTest=false;
-				break ;
-			case 2:
-				this.renderQueue=2000;
-				this.depthWrite=true;
-				this.cull=0;
-				this.blend=0;
-				this.alphaTest=false;
-				break ;
-			case 3:
-				this.depthWrite=true;
-				this.cull=2;
-				this.blend=0;
-				this.renderQueue=2000;
-				break ;
-			case 13:
-				this.renderQueue=3000;
-				this.depthWrite=true;
-				this.cull=2;
-				this.blend=1;
-				this.srcBlend=0x0302;
-				this.dstBlend=0x0303;
-				break ;
-			default :
-				throw new Error("PBRMaterial:renderMode value error.");
-			}
-	});
-
-	/**
-	*设置pbr信息贴图。
-	*@param value pbr信息贴图。
-	*/
-	/**
-	*获取pbr信息贴图。
-	*@return pbr信息贴图。
-	*/
-	__getset(0,__proto,'pbrInfoTexture',function(){
-		return this._getTexture(3);
-		},function(value){
-		this._setTexture(3,value);
-		this._addShaderDefine(PBRMaterial.SHADERDEFINE_HAS_PBRINFO);
-	});
-
-	__getset(0,__proto,'testClipZ',null,function(v){
-		this._addShaderDefine(PBRMaterial.SHADERDEFINE_TEST_CLIPZ);
-	});
-
-	PBRMaterial.__init__=function(){
-		PBRMaterial.SHADERDEFINE_FIX_METALESS=PBRMaterial.shaderDefines.registerDefine("FIX_METALESS");
-		PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS=PBRMaterial.shaderDefines.registerDefine("FIX_ROUGHNESS");
-		PBRMaterial.SHADERDEFINE_HAS_TANGENT=PBRMaterial.shaderDefines.registerDefine("HAS_TANGENT");
-		PBRMaterial.SHADERDEFINE_HAS_PBRINFO=PBRMaterial.shaderDefines.registerDefine("HAS_PBRINFO");
-		PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH=PBRMaterial.shaderDefines.registerDefine("USE_GROUNDTRUTH");
-		PBRMaterial.SHADERDEFINE_TEST_CLIPZ=PBRMaterial.shaderDefines.registerDefine("CLIPZ");
-	}
-
-	PBRMaterial.load=function(url){
-		return Laya.loader.create(url,null,null,PBRMaterial);
-	}
-
-	PBRMaterial.DIFFUSETEXTURE=1;
-	PBRMaterial.NORMALTEXTURE=2;
-	PBRMaterial.PBRINFOTEXTURE=3;
-	PBRMaterial.PBRLUTTEXTURE=4;
-	PBRMaterial.UVANIAGE=5;
-	PBRMaterial.MATERIALROUGHNESS=6;
-	PBRMaterial.MATERIALMETALESS=7;
-	PBRMaterial.UVMATRIX=8;
-	PBRMaterial.UVAGE=9;
-	PBRMaterial.AOOBJPOS=14;
-	PBRMaterial.HSNOISETEXTURE=15;
-	PBRMaterial.SHADERDEFINE_FIX_ROUGHNESS=0;
-	PBRMaterial.SHADERDEFINE_FIX_METALESS=0;
-	PBRMaterial.SHADERDEFINE_HAS_TANGENT=0;
-	PBRMaterial.SHADERDEFINE_TEST_CLIPZ=0;
-	PBRMaterial.SHADERDEFINE_HAS_PBRINFO=0;
-	PBRMaterial.SHADERDEFINE_USE_GROUNDTRUTH=0;
-	PBRMaterial.RENDERMODE_OPAQUE=1;
-	PBRMaterial.RENDERMODE_OPAQUEDOUBLEFACE=2;
-	PBRMaterial.RENDERMODE_CUTOUT=3;
-	PBRMaterial.RENDERMODE_CUTOUTDOUBLEFACE=4;
-	PBRMaterial.RENDERMODE_TRANSPARENT=13;
-	PBRMaterial.pbrlutTex=null;
-	PBRMaterial.HammersleyNoiseTex=null;
-	__static(PBRMaterial,
-	['defaultMaterial',function(){return this.defaultMaterial=new PBRMaterial();},'shaderDefines',function(){return this.shaderDefines=new ShaderDefines(BaseMaterial.shaderDefines);}
-	]);
-	return PBRMaterial;
-})(BaseMaterial)
 
 
 /**
@@ -61268,510 +60825,6 @@ var Text=(function(_super){
 })(Sprite)
 
 
-/**
-*<code>Component</code> 是ui控件类的基类。
-*<p>生命周期：preinitialize > createChildren > initialize > 组件构造函数</p>
-*/
-//class laya.ui.Component extends laya.display.Sprite
-var Component=(function(_super){
-	function Component(){
-		this._comXml=null;
-		/**@private 控件的元数据。 */
-		this._dataSource=null;
-		/**@private 鼠标悬停提示 */
-		this._toolTip=null;
-		/**@private 标签 */
-		this._tag=null;
-		/**@private 禁用 */
-		this._disabled=false;
-		/**@private 变灰*/
-		this._gray=false;
-		/**
-		*是否启用相对布局
-		*/
-		this.layoutEnabled=true;
-		Component.__super.call(this);
-		this._layout=LayoutStyle.EMPTY;
-		this.preinitialize();
-		this.createChildren();
-		this.initialize();
-	}
-
-	__class(Component,'laya.ui.Component',_super);
-	var __proto=Component.prototype;
-	Laya.imps(__proto,{"laya.ui.IComponent":true})
-	/**@inheritDoc */
-	__proto.destroy=function(destroyChild){
-		(destroyChild===void 0)&& (destroyChild=true);
-		_super.prototype.destroy.call(this,destroyChild);
-		this._dataSource=this._layout=null;
-		this._tag=null;
-		this._toolTip=null;
-	}
-
-	/**
-	*<p>预初始化。</p>
-	*@internal 子类可在此函数内设置、修改属性默认值
-	*/
-	__proto.preinitialize=function(){}
-	/**
-	*<p>创建并添加控件子节点。</p>
-	*@internal 子类可在此函数内创建并添加子节点。
-	*/
-	__proto.createChildren=function(){}
-	/**
-	*<p>控件初始化。</p>
-	*@internal 在此子对象已被创建，可以对子对象进行修改。
-	*/
-	__proto.initialize=function(){}
-	/**
-	*<p>延迟运行指定的函数。</p>
-	*<p>在控件被显示在屏幕之前调用，一般用于延迟计算数据。</p>
-	*@param method 要执行的函数的名称。例如，functionName。
-	*@param args 传递给 <code>method</code> 函数的可选参数列表。
-	*
-	*@see #runCallLater()
-	*/
-	__proto.callLater=function(method,args){
-		Laya.timer.callLater(this,method,args);
-	}
-
-	/**
-	*<p>如果有需要延迟调用的函数（通过 <code>callLater</code> 函数设置），则立即执行延迟调用函数。</p>
-	*@param method 要执行的函数名称。例如，functionName。
-	*@see #callLater()
-	*/
-	__proto.runCallLater=function(method){
-		Laya.timer.runCallLater(this,method);
-	}
-
-	/**
-	*<p>立即执行影响宽高度量的延迟调用函数。</p>
-	*@internal <p>使用 <code>runCallLater</code> 函数，立即执行影响宽高度量的延迟运行函数(使用 <code>callLater</code> 设置延迟执行函数)。</p>
-	*@see #callLater()
-	*@see #runCallLater()
-	*/
-	__proto.commitMeasure=function(){}
-	/**
-	*<p>重新调整对象的大小。</p>
-	*/
-	__proto.changeSize=function(){
-		this.event("resize");
-		if (this._layout.enable){
-			this.resetLayoutX();
-			this.resetLayoutY();
-		}
-	}
-
-	/**
-	*@private
-	*<p>获取对象的布局样式。</p>
-	*/
-	__proto.getLayout=function(){
-		this._layout===LayoutStyle.EMPTY && (this._layout=new LayoutStyle());
-		return this._layout;
-	}
-
-	/**
-	*@private
-	*<p>指定对象是否可使用布局。</p>
-	*<p>如果值为true,则此对象可以使用布局样式，否则不使用布局样式。</p>
-	*@param value 一个 Boolean 值，指定对象是否可使用布局。
-	*/
-	__proto._setLayoutEnabled=function(value){
-		if (this._layout && this._layout.enable !=value){
-			this._layout.enable=value;
-			this.on("added",this,this.onAdded);
-			this.on("removed",this,this.onRemoved);
-			if (this.parent){
-				this.onAdded();
-			}
-		}
-	}
-
-	/**
-	*对象从显示列表移除的事件侦听处理函数。
-	*/
-	__proto.onRemoved=function(){
-		this.parent.off("resize",this,this.onCompResize);
-	}
-
-	/**
-	*对象被添加到显示列表的事件侦听处理函数。
-	*/
-	__proto.onAdded=function(){
-		this.parent.on("resize",this,this.onCompResize);
-		this.resetLayoutX();
-		this.resetLayoutY();
-	}
-
-	/**
-	*父容器的 <code>Event.RESIZE</code> 事件侦听处理函数。
-	*/
-	__proto.onCompResize=function(){
-		if (this._layout && this._layout.enable){
-			this.resetLayoutX();
-			this.resetLayoutY();
-		}
-	}
-
-	/**
-	*<p>重置对象的 <code>X</code> 轴（水平方向）布局。</p>
-	*/
-	__proto.resetLayoutX=function(){
-		var layout=this._layout;
-		if (!isNaN(layout.anchorX))this.pivotX=layout.anchorX *this.width;
-		if (!this.layoutEnabled)return;
-		var parent=this.parent;
-		if (parent){
-			if (!isNaN(layout.centerX)){
-				this.x=Math.round((parent.width-this.displayWidth)*0.5+layout.centerX+this.pivotX *this.scaleX);
-				}else if (!isNaN(layout.left)){
-				this.x=Math.round(layout.left+this.pivotX *this.scaleX);
-				if (!isNaN(layout.right)){
-					this.width=(parent._width-layout.left-layout.right)/ (this.scaleX || 0.01);
-				}
-				}else if (!isNaN(layout.right)){
-				this.x=Math.round(parent.width-this.displayWidth-layout.right+this.pivotX *this.scaleX);
-			}
-		}
-	}
-
-	/**
-	*<p>重置对象的 <code>Y</code> 轴（垂直方向）布局。</p>
-	*/
-	__proto.resetLayoutY=function(){
-		var layout=this._layout;
-		if (!isNaN(layout.anchorY))this.pivotY=layout.anchorY *this.height;
-		if (!this.layoutEnabled)return;
-		var parent=this.parent;
-		if (parent){
-			if (!isNaN(layout.centerY)){
-				this.y=Math.round((parent.height-this.displayHeight)*0.5+layout.centerY+this.pivotY *this.scaleY);
-				}else if (!isNaN(layout.top)){
-				this.y=Math.round(layout.top+this.pivotY *this.scaleY);
-				if (!isNaN(layout.bottom)){
-					this.height=(parent._height-layout.top-layout.bottom)/ (this.scaleY || 0.01);
-				}
-				}else if (!isNaN(layout.bottom)){
-				this.y=Math.round(parent.height-this.displayHeight-layout.bottom+this.pivotY *this.scaleY);
-			}
-		}
-	}
-
-	/**
-	*对象的 <code>Event.MOUSE_OVER</code> 事件侦听处理函数。
-	*/
-	__proto.onMouseOver=function(e){
-		Laya.stage.event("showtip",this._toolTip);
-	}
-
-	/**
-	*对象的 <code>Event.MOUSE_OUT</code> 事件侦听处理函数。
-	*/
-	__proto.onMouseOut=function(e){
-		Laya.stage.event("hidetip",this._toolTip);
-	}
-
-	__proto._childChanged=function(child){
-		this.callLater(this.changeSize);
-		_super.prototype._childChanged.call(this,child);
-	}
-
-	/**
-	*<p>对象的显示宽度（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'displayWidth',function(){
-		return this.width *this.scaleX;
-	});
-
-	/**
-	*<p>表示显示对象的宽度，以像素为单位。</p>
-	*<p><b>注：</b>当值为0时，宽度为自适应大小。</p>
-	*/
-	__getset(0,__proto,'width',function(){
-		if (this._width)return this._width;
-		return this.measureWidth;
-		},function(value){
-		if (this._width !=value){
-			this._width=value;
-			this.conchModel && this.conchModel.size(this._width,this._height);
-			this.callLater(this.changeSize);
-			if (this._layout.enable && (!isNaN(this._layout.centerX)|| !isNaN(this._layout.right)|| !isNaN(this._layout.anchorX)))this.resetLayoutX();
-		}
-	});
-
-	/**
-	*<p>显示对象的实际显示区域宽度（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'measureWidth',function(){
-		var max=0;
-		this.commitMeasure();
-		for (var i=this.numChildren-1;i >-1;i--){
-			var comp=this.getChildAt(i);
-			if (comp.visible){
-				max=Math.max(comp.x+comp.width *comp.scaleX,max);
-			}
-		}
-		return max;
-	});
-
-	/**
-	*<p>对象的显示高度（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'displayHeight',function(){
-		return this.height *this.scaleY;
-	});
-
-	/**
-	*<p>表示显示对象的高度，以像素为单位。</p>
-	*<p><b>注：</b>当值为0时，高度为自适应大小。</p>
-	*/
-	__getset(0,__proto,'height',function(){
-		if (this._height)return this._height;
-		return this.measureHeight;
-		},function(value){
-		if (this._height !=value){
-			this._height=value;
-			this.conchModel && this.conchModel.size(this._width,this._height);
-			this.callLater(this.changeSize);
-			if (this._layout.enable && (!isNaN(this._layout.centerY)|| !isNaN(this._layout.bottom)|| !isNaN(this._layout.anchorY)))this.resetLayoutY();
-		}
-	});
-
-	/**
-	*<p>数据赋值，通过对UI赋值来控制UI显示逻辑。</p>
-	*<p>简单赋值会更改组件的默认属性，使用大括号可以指定组件的任意属性进行赋值。</p>
-	*@example
-	//默认属性赋值
-	dataSource={label1:"改变了label",checkbox1:true};//(更改了label1的text属性值，更改checkbox1的selected属性)。
-	//任意属性赋值
-	dataSource={label2:{text:"改变了label",size:14},checkbox2:{selected:true,x:10}};
-	*/
-	__getset(0,__proto,'dataSource',function(){
-		return this._dataSource;
-		},function(value){
-		this._dataSource=value;
-		for (var prop in this._dataSource){
-			if (this.hasOwnProperty(prop)&& !((typeof (this[prop])=='function'))){
-				this[prop]=this._dataSource[prop];
-			}
-		}
-	});
-
-	/**@inheritDoc */
-	__getset(0,__proto,'scaleY',_super.prototype._$get_scaleY,function(value){
-		if (Laya.superGet(Sprite,this,'scaleY')!=value){
-			Laya.superSet(Sprite,this,'scaleY',value);
-			this.callLater(this.changeSize);
-			this._layout.enable && this.resetLayoutY();
-		}
-	});
-
-	/**
-	*<p>显示对象的实际显示区域高度（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'measureHeight',function(){
-		var max=0;
-		this.commitMeasure();
-		for (var i=this.numChildren-1;i >-1;i--){
-			var comp=this.getChildAt(i);
-			if (comp.visible){
-				max=Math.max(comp.y+comp.height *comp.scaleY,max);
-			}
-		}
-		return max;
-	});
-
-	/**@inheritDoc */
-	__getset(0,__proto,'scaleX',_super.prototype._$get_scaleX,function(value){
-		if (Laya.superGet(Sprite,this,'scaleX')!=value){
-			Laya.superSet(Sprite,this,'scaleX',value);
-			this.callLater(this.changeSize);
-			this._layout.enable && this.resetLayoutX();
-		}
-	});
-
-	/**
-	*<p>从组件顶边到其内容区域顶边之间的垂直距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'top',function(){
-		return this._layout.top;
-		},function(value){
-		if (value !=this._layout.top){
-			this.getLayout().top=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutY();
-	});
-
-	/**
-	*<p>从组件底边到其内容区域底边之间的垂直距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'bottom',function(){
-		return this._layout.bottom;
-		},function(value){
-		if (value !=this._layout.bottom){
-			this.getLayout().bottom=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutY();
-	});
-
-	/**
-	*<p>从组件左边到其内容区域左边之间的水平距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'left',function(){
-		return this._layout.left;
-		},function(value){
-		if (value !=this._layout.left){
-			this.getLayout().left=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutX();
-	});
-
-	/**
-	*<p>从组件右边到其内容区域右边之间的水平距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'right',function(){
-		return this._layout.right;
-		},function(value){
-		if (value !=this._layout.right){
-			this.getLayout().right=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutX();
-	});
-
-	/**
-	*<p>在父容器中，此对象的水平方向中轴线与父容器的水平方向中心线的距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'centerX',function(){
-		return this._layout.centerX;
-		},function(value){
-		if (value !=this._layout.centerX){
-			this.getLayout().centerX=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutX();
-	});
-
-	/**
-	*<p>在父容器中，此对象的垂直方向中轴线与父容器的垂直方向中心线的距离（以像素为单位）。</p>
-	*/
-	__getset(0,__proto,'centerY',function(){
-		return this._layout.centerY;
-		},function(value){
-		if (value !=this._layout.centerY){
-			this.getLayout().centerY=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutY();
-	});
-
-	/**X轴锚点，值为0-1*/
-	__getset(0,__proto,'anchorX',function(){
-		return this._layout.anchorX;
-		},function(value){
-		if (value !=this._layout.anchorX){
-			this.getLayout().anchorX=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutX();
-	});
-
-	/**Y轴锚点，值为0-1*/
-	__getset(0,__proto,'anchorY',function(){
-		return this._layout.anchorY;
-		},function(value){
-		if (value !=this._layout.anchorY){
-			this.getLayout().anchorY=value;
-			this._setLayoutEnabled(true);
-		}
-		this.resetLayoutY();
-	});
-
-	/**
-	*<p>对象的标签。</p>
-	*@internal 冗余字段，可以用来储存数据。
-	*/
-	__getset(0,__proto,'tag',function(){
-		return this._tag;
-		},function(value){
-		this._tag=value;
-	});
-
-	/**
-	*<p>鼠标悬停提示。</p>
-	*<p>可以赋值为文本 <code>String</code> 或函数 <code>Handler</code> ，用来实现自定义样式的鼠标提示和参数携带等。</p>
-	*@example
-	*private var _testTips:TestTipsUI=new TestTipsUI();
-	*private function testTips():void {
-		//简单鼠标提示
-		*btn2.toolTip="这里是鼠标提示&lt;b&gt;粗体&lt;/b&gt;&lt;br&gt;换行";
-		//自定义的鼠标提示
-		*btn1.toolTip=showTips1;
-		//带参数的自定义鼠标提示
-		*clip.toolTip=new Handler(this,showTips2,["clip"]);
-		*}
-	*private function showTips1():void {
-		*_testTips.label.text="这里是按钮["+btn1.label+"]";
-		*tip.addChild(_testTips);
-		*}
-	*private function showTips2(name:String):void {
-		*_testTips.label.text="这里是"+name;
-		*tip.addChild(_testTips);
-		*}
-	*/
-	__getset(0,__proto,'toolTip',function(){
-		return this._toolTip;
-		},function(value){
-		if (this._toolTip !=value){
-			this._toolTip=value;
-			if (value !=null){
-				this.on("mouseover",this,this.onMouseOver);
-				this.on("mouseout",this,this.onMouseOut);
-				}else {
-				this.off("mouseover",this,this.onMouseOver);
-				this.off("mouseout",this,this.onMouseOut);
-			}
-		}
-	});
-
-	/**
-	*XML 数据。
-	*/
-	__getset(0,__proto,'comXml',function(){
-		return this._comXml;
-		},function(value){
-		this._comXml=value;
-	});
-
-	/**是否变灰。*/
-	__getset(0,__proto,'gray',function(){
-		return this._gray;
-		},function(value){
-		if (value!==this._gray){
-			this._gray=value;
-			UIUtils.gray(this,value);
-		}
-	});
-
-	/**是否禁用页面，设置为true后，会变灰并且禁用鼠标。*/
-	__getset(0,__proto,'disabled',function(){
-		return this._disabled;
-		},function(value){
-		if (value!==this._disabled){
-			this.gray=this._disabled=value;
-			this.mouseEnabled=!value;
-		}
-	});
-
-	return Component;
-})(Sprite)
-
-
 //class laya.d3.resource.DataTexture2D extends laya.d3.resource.BaseTexture
 var DataTexture2D=(function(_super){
 	function DataTexture2D(){
@@ -65745,12 +64798,10 @@ var TextSV=(function(_super){
 */
 //class code.NavMesh extends laya.d3.resource.models.PrimitiveMesh
 var NavMesh=(function(_super){
-	function NavMesh(p,i){
-		this.p=null;
-		this.i=null;
+	function NavMesh(g){
+		this.g=null;
 		NavMesh.__super.call(this);
-		this.i=i;
-		this.p=p;
+		this.g=g;
 		this.activeResource();
 		this._positions=this._getPositions();
 		this._generateBoundingObject();
@@ -65759,7 +64810,7 @@ var NavMesh=(function(_super){
 	__class(NavMesh,'code.NavMesh',_super);
 	var __proto=NavMesh.prototype;
 	__proto.recreateResource=function(){
-		this._numberIndices=this.i.length / 5 *3;
+		this._numberIndices=this.g.faces.length*3;
 		var vertexDeclaration=VertexPositionNormalColor.vertexDeclaration;
 		var p2=[];
 		var i2=[];
@@ -65768,36 +64819,38 @@ var NavMesh=(function(_super){
 			i2.push(k++);
 			i2.push(k++);
 			i2.push(k++);
-			var a=this.i[j *5+2];
-			var b=this.i[j *5+1];
-			var c=this.i[j *5+3];
-			p2.push(this.p[a *3]);
-			p2.push(this.p[a *3+1]);
-			p2.push(this.p[a *3+2]);
+			var a=this.g.faces[j].a;
+			var b=this.g.faces[j].c;
+			var c=this.g.faces[j].b;
+			p2.push(this.g.vertices[a].x);
+			p2.push(this.g.vertices[a].y);
+			p2.push(this.g.vertices[a].z);
 			p2.push(0);
 			p2.push(1);
 			p2.push(0);
-			var cc=Color.fromHSV(((Math.random()*10)>>0)/10,1,1);
+			var cc=this.getColor(this.g.vertices[a]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
 			p2.push(1);
-			p2.push(this.p[b *3]);
-			p2.push(this.p[b *3+1]);
-			p2.push(this.p[b *3+2]);
+			p2.push(this.g.vertices[b].x);
+			p2.push(this.g.vertices[b].y);
+			p2.push(this.g.vertices[b].z);
 			p2.push(0);
 			p2.push(1);
 			p2.push(0);
+			var cc=this.getColor(this.g.vertices[b]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
 			p2.push(1);
-			p2.push(this.p[c *3]);
-			p2.push(this.p[c *3+1]);
-			p2.push(this.p[c *3+2]);
+			p2.push(this.g.vertices[c].x);
+			p2.push(this.g.vertices[c].y);
+			p2.push(this.g.vertices[c].z);
 			p2.push(0);
 			p2.push(1);
 			p2.push(0);
+			var cc=this.getColor(this.g.vertices[c]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
@@ -65812,6 +64865,10 @@ var NavMesh=(function(_super){
 		this._indexBuffer.setData(indices);
 		this.memorySize=(this._vertexBuffer._byteLength+this._indexBuffer._byteLength)*2;
 		this.completeCreate();
+	}
+
+	__proto.getColor=function(v){
+		return Color.fromHSV((Vector3.scalarLength(v)/20+100)%1,1,1);
 	}
 
 	return NavMesh;
@@ -70001,231 +69058,6 @@ var WebGLImage=(function(_super){
 
 	return WebGLImage;
 })(HTMLImage)
-
-
-/**
-*<code>TerrainMeshSprite3D</code> 类用于创建网格。
-*/
-//class laya.d3.core.MeshTerrainSprite3D extends laya.d3.core.MeshSprite3D
-var MeshTerrainSprite3D=(function(_super){
-	function MeshTerrainSprite3D(mesh,heightMap,name){
-		/**@private */
-		this._minX=NaN;
-		/**@private */
-		this._minZ=NaN;
-		/**@private */
-		this._cellSize=null;
-		/**@private */
-		this._heightMap=null;
-		MeshTerrainSprite3D.__super.call(this,mesh,name);
-		this._heightMap=heightMap;
-		this._cellSize=new Vector2();
-	}
-
-	__class(MeshTerrainSprite3D,'laya.d3.core.MeshTerrainSprite3D',_super);
-	var __proto=MeshTerrainSprite3D.prototype;
-	/**
-	*@private
-	*/
-	__proto._disableRotation=function(){
-		var rotation=this.transform.rotation;
-		rotation.elements[0]=0;
-		rotation.elements[1]=0;
-		rotation.elements[2]=0;
-		rotation.elements[3]=1;
-		this.transform.rotation=rotation;
-	}
-
-	/**
-	*@private
-	*/
-	__proto._getScaleX=function(){
-		var worldMat=this.transform.worldMatrix;
-		var worldMatE=worldMat.elements;
-		var m11=worldMatE[0];
-		var m12=worldMatE[1];
-		var m13=worldMatE[2];
-		return Math.sqrt((m11 *m11)+(m12 *m12)+(m13 *m13));
-	}
-
-	/**
-	*@private
-	*/
-	__proto._getScaleZ=function(){
-		var worldMat=this.transform.worldMatrix;
-		var worldMatE=worldMat.elements;
-		var m31=worldMatE[8];
-		var m32=worldMatE[9];
-		var m33=worldMatE[10];
-		return Math.sqrt((m31 *m31)+(m32 *m32)+(m33 *m33));
-	}
-
-	/**
-	*@private
-	*/
-	__proto._initCreateFromMesh=function(heightMapWidth,heightMapHeight){
-		this._heightMap=HeightMap.creatFromMesh(this.meshFilter.sharedMesh,heightMapWidth,heightMapHeight,this._cellSize);
-		var boundingBox=this.meshFilter.sharedMesh.boundingBox;
-		var min=boundingBox.min;
-		var max=boundingBox.max;
-		this._minX=min.x;
-		this._minZ=min.z;
-	}
-
-	/**
-	*@private
-	*/
-	__proto._initCreateFromMeshHeightMap=function(texture,minHeight,maxHeight){
-		var _$this=this;
-		var boundingBox=this.meshFilter.sharedMesh.boundingBox;
-		if (texture.loaded){
-			this._heightMap=HeightMap.createFromImage(texture,minHeight,maxHeight);
-			this._computeCellSize(boundingBox);
-			}else {
-			texture.once("loaded",null,function(){
-				_$this._heightMap=HeightMap.createFromImage(texture,minHeight,maxHeight);
-				_$this._computeCellSize(boundingBox);
-			});
-		};
-		var min=boundingBox.min;
-		var max=boundingBox.max;
-		this._minX=min.x;
-		this._minZ=min.z;
-	}
-
-	/**
-	*@private
-	*/
-	__proto._computeCellSize=function(boundingBox){
-		var min=boundingBox.min;
-		var max=boundingBox.max;
-		var minX=min.x;
-		var minZ=min.z;
-		var maxX=max.x;
-		var maxZ=max.z;
-		var widthSize=maxX-minX;
-		var heightSize=maxZ-minZ;
-		this._cellSize.elements[0]=widthSize / (this._heightMap.width-1);
-		this._cellSize.elements[1]=heightSize / (this._heightMap.height-1);
-	}
-
-	/**
-	*@private
-	*/
-	__proto._update=function(state){
-		this._disableRotation();
-		laya.d3.core.RenderableSprite3D.prototype._update.call(this,state);
-	}
-
-	/**
-	*获取地形高度。
-	*@param x X轴坐标。
-	*@param z Z轴坐标。
-	*/
-	__proto.getHeight=function(x,z){
-		MeshTerrainSprite3D._tempVector3.elements[0]=x;
-		MeshTerrainSprite3D._tempVector3.elements[1]=0;
-		MeshTerrainSprite3D._tempVector3.elements[2]=z;
-		this._disableRotation();
-		var worldMat=this.transform.worldMatrix;
-		worldMat.invert(MeshTerrainSprite3D._tempMatrix4x4);
-		Vector3.transformCoordinate(MeshTerrainSprite3D._tempVector3,MeshTerrainSprite3D._tempMatrix4x4,MeshTerrainSprite3D._tempVector3);
-		x=MeshTerrainSprite3D._tempVector3.elements[0];
-		z=MeshTerrainSprite3D._tempVector3.elements[2];
-		var c=(x-this._minX)/ this._cellSize.x;
-		var d=(z-this._minZ)/ this._cellSize.y;
-		var row=Math.floor(d);
-		var col=Math.floor(c);
-		var s=c-col;
-		var t=d-row;
-		var uy=NaN;
-		var vy=NaN;
-		var worldMatE=worldMat.elements;
-		var m21=worldMatE[4];
-		var m22=worldMatE[5];
-		var m23=worldMatE[6];
-		var scaleY=Math.sqrt((m21 *m21)+(m22 *m22)+(m23 *m23));
-		var translateY=worldMatE[13];
-		var h01=this._heightMap.getHeight(row,col+1);
-		var h10=this._heightMap.getHeight((row+1),col);
-		if (isNaN(h01)|| isNaN(h10))
-			return NaN;
-		if (s+t <=1.0){
-			var h00=this._heightMap.getHeight(row,col);
-			if (isNaN(h00))
-				return NaN;
-			uy=h01-h00;
-			vy=h10-h00;
-			return (h00+s *uy+t *vy)*scaleY+translateY;
-			}else {
-			var h11=this._heightMap.getHeight((row+1),col+1);
-			if (isNaN(h11))
-				return NaN;
-			uy=h10-h11;
-			vy=h01-h11;
-			return (h11+(1.0-s)*uy+(1.0-t)*vy)*scaleY+translateY;
-		}
-	}
-
-	/**
-	*获取地形X轴最小位置。
-	*@return 地形X轴最小位置。
-	*/
-	__getset(0,__proto,'minX',function(){
-		var worldMat=this.transform.worldMatrix;
-		var worldMatE=worldMat.elements;
-		return this._minX *this._getScaleX()+worldMatE[12];
-	});
-
-	/**
-	*获取地形X轴长度。
-	*@return 地形X轴长度。
-	*/
-	__getset(0,__proto,'width',function(){
-		return (this._heightMap.width-1)*this._cellSize.x *this._getScaleX();
-	});
-
-	/**
-	*获取地形Z轴最小位置。
-	*@return 地形X轴最小位置。
-	*/
-	__getset(0,__proto,'minZ',function(){
-		var worldMat=this.transform.worldMatrix;
-		var worldMatE=worldMat.elements;
-		return this._minZ *this._getScaleZ()+worldMatE[14];
-	});
-
-	/**
-	*获取地形Z轴长度。
-	*@return 地形Z轴长度。
-	*/
-	__getset(0,__proto,'depth',function(){
-		return (this._heightMap.height-1)*this._cellSize.y *this._getScaleZ();
-	});
-
-	MeshTerrainSprite3D.createFromMesh=function(mesh,heightMapWidth,heightMapHeight,name){
-		var meshTerrainSprite3D=new MeshTerrainSprite3D(mesh,null,name);
-		if (mesh.loaded)
-			meshTerrainSprite3D._initCreateFromMesh(heightMapWidth,heightMapHeight);
-		else
-		mesh.once("loaded",meshTerrainSprite3D,meshTerrainSprite3D._initCreateFromMesh,[heightMapWidth,heightMapHeight]);
-		return meshTerrainSprite3D;
-	}
-
-	MeshTerrainSprite3D.createFromMeshAndHeightMap=function(mesh,texture,minHeight,maxHeight,name){
-		var meshTerrainSprite3D=new MeshTerrainSprite3D(mesh,null,name);
-		if (mesh.loaded)
-			meshTerrainSprite3D._initCreateFromMeshHeightMap(texture,minHeight,maxHeight);
-		else
-		mesh.once("loaded",meshTerrainSprite3D,meshTerrainSprite3D._initCreateFromMeshHeightMap,[texture,minHeight,maxHeight]);
-		return meshTerrainSprite3D;
-	}
-
-	__static(MeshTerrainSprite3D,
-	['_tempVector3',function(){return this._tempVector3=new Vector3();},'_tempMatrix4x4',function(){return this._tempMatrix4x4=new Matrix4x4();}
-	]);
-	return MeshTerrainSprite3D;
-})(MeshSprite3D)
 
 
 /**
