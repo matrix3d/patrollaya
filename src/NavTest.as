@@ -187,7 +187,7 @@ package
 			patrol.setZoneData('level', zoneNodes);
 			
 			// Set the player's navigation mesh group
-			playerNavMeshGroup = patrol.getGroup('level', new Vector3( -3.5, 0.5, 5.5));
+			//playerNavMeshGroup = patrol.getGroup('level', new Vector3( -3.5, 0.5, 5.5));
 			
 			Laya.stage.on(Event.CLICK, this, onClick);
 			
@@ -226,7 +226,8 @@ package
 				crowdcitylaya.max.js:1364 0 0.09000000357627869 -56.31999969482422
 				crowdcitylaya.max.js:1364 10.970426559448242 0 -11.572933197021484
 				crowdcitylaya.max.js:1373 end 10.970426559448242 0 -11.572933197021484*/
-				
+				playerNavMeshGroup = patrol.getGroup('level', target.transform.position,false);
+			
 				trace("寻找路径",player.transform.position,target.transform.position);
 				var calculatedPath = patrol.findPath(player.transform.position, target.transform.position, 'level', playerNavMeshGroup);
 

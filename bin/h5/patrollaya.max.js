@@ -923,8 +923,9 @@ var Tool=(function(){
 //class NavTest
 var NavTest=(function(){
 	function NavTest(){
-		//private var navUrl:String="meshes/level.nav.js";
-		this.navUrl="meshes/level2.js";
+		//private var levelUrl:String="res/unity/level.ls";
+		this.navUrl="meshes/level.nav.js";
+		//private var navUrl:String="meshes/level2.js";
 		this.scene=null;
 		this.camera=null;
 		this.player=null;
@@ -1034,7 +1035,6 @@ var NavTest=(function(){
 			this.patrol=new this.patrol();
 		}
 		this.patrol.setZoneData('level',zoneNodes);
-		this.playerNavMeshGroup=this.patrol.getGroup('level',new Vector3(-3.5,0.5,5.5));
 		Laya.stage.on("click",this,this.onClick);
 		var mesh=new MeshSprite3D(new NavMesh(g));
 		mesh.meshRender.material=new StandardMaterial;
@@ -1056,6 +1056,7 @@ var NavTest=(function(){
 		if (flag){
 			out=_outHitInfo.position;
 			this.target.transform.position=out;
+			this.playerNavMeshGroup=this.patrol.getGroup('level',this.target.transform.position,false);
 			console.log("寻找路径",this.player.transform.position,this.target.transform.position);
 			var calculatedPath=this.patrol.findPath(this.player.transform.position,this.target.transform.position,'level',this.playerNavMeshGroup);
 			if (calculatedPath && calculatedPath.length){
