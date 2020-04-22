@@ -46,6 +46,7 @@ package
 		
 		//private var levelUrl:String = "res/unity/level.ls";
 		private var navUrl:String = "meshes/level.nav.js";
+		//private var navUrl:String = "meshes/level2.js";
 		private var scene:Scene;
 		private var camera:Camera;
 		private var playerNavMeshGroup;
@@ -56,6 +57,7 @@ package
 		private var material:StandardMaterial;
 		private var agent:NavMeshAgent;
 		private var meshC:MeshCollider;
+		private var patrol:Object;
 		public function NavTest() 
 		{
 			//初始化引擎
@@ -170,12 +172,22 @@ package
 			var g:Geometry = new Geometry;
 			g.faces = faces;
 			g.vertices = p;
-			var zoneNodes = Browser.window.patrol.buildNodes(g);
+			
+			patrol = Browser.window.patrol;
+			if (patrol==null&&Browser.window.threePathfinding){
+				patrol = Browser.window.threePathfinding.Pathfinding;
+			}
+			if (patrol.buildNodes){
+				var zoneNodes = patrol.buildNodes(g);
+			}else{
+				zoneNodes = patrol.createZone(g);
+				patrol = new patrol();
+			}
 
-			Browser.window.patrol.setZoneData('level', zoneNodes);
+			patrol.setZoneData('level', zoneNodes);
 			
 			// Set the player's navigation mesh group
-			playerNavMeshGroup = Browser.window.patrol.getGroup('level', new Vector3( -3.5, 0.5, 5.5));
+			playerNavMeshGroup = patrol.getGroup('level', new Vector3( -3.5, 0.5, 5.5));
 			
 			Laya.stage.on(Event.CLICK, this, onClick);
 			
@@ -216,7 +228,7 @@ package
 				crowdcitylaya.max.js:1373 end 10.970426559448242 0 -11.572933197021484*/
 				
 				trace("寻找路径",player.transform.position,target.transform.position);
-				var calculatedPath = Browser.window.patrol.findPath(player.transform.position, target.transform.position, 'level', playerNavMeshGroup);
+				var calculatedPath = patrol.findPath(player.transform.position, target.transform.position, 'level', playerNavMeshGroup);
 
 				
 				if (calculatedPath && calculatedPath.length) {

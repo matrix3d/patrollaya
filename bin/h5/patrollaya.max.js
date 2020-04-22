@@ -806,6 +806,7 @@ var Geometry=(function(){
 	function Geometry(){
 		this.faces=null;
 		this.vertices=null;
+		this.isGeometry=true;
 	}
 
 	__class(Geometry,'code.Geometry');
@@ -922,8 +923,8 @@ var Tool=(function(){
 //class NavTest
 var NavTest=(function(){
 	function NavTest(){
-		//private var levelUrl:String="res/unity/level.ls";
-		this.navUrl="meshes/level.nav.js";
+		//private var navUrl:String="meshes/level.nav.js";
+		this.navUrl="meshes/level2.js";
 		this.scene=null;
 		this.camera=null;
 		this.player=null;
@@ -933,6 +934,7 @@ var NavTest=(function(){
 		this.material=null;
 		this.agent=null;
 		this.meshC=null;
+		this.patrol=null;
 		Laya3D.init(0,0,true);
 		Laya.stage.scaleMode="full";
 		Laya.stage.screenMode="none";
@@ -1021,9 +1023,18 @@ var NavTest=(function(){
 		var g=new Geometry;
 		g.faces=faces;
 		g.vertices=p;
-		var zoneNodes=Browser.window.patrol.buildNodes(g);
-		Browser.window.patrol.setZoneData('level',zoneNodes);
-		this.playerNavMeshGroup=Browser.window.patrol.getGroup('level',new Vector3(-3.5,0.5,5.5));
+		this.patrol=Browser.window.patrol;
+		if (this.patrol==null&&Browser.window.threePathfinding){
+			this.patrol=Browser.window.threePathfinding.Pathfinding;
+		}
+		if (this.patrol.buildNodes){
+			var zoneNodes=this.patrol.buildNodes(g);
+			}else{
+			zoneNodes=this.patrol.createZone(g);
+			this.patrol=new this.patrol();
+		}
+		this.patrol.setZoneData('level',zoneNodes);
+		this.playerNavMeshGroup=this.patrol.getGroup('level',new Vector3(-3.5,0.5,5.5));
 		Laya.stage.on("click",this,this.onClick);
 		var mesh=new MeshSprite3D(new NavMesh(g));
 		mesh.meshRender.material=new StandardMaterial;
@@ -1046,7 +1057,7 @@ var NavTest=(function(){
 			out=_outHitInfo.position;
 			this.target.transform.position=out;
 			console.log("寻找路径",this.player.transform.position,this.target.transform.position);
-			var calculatedPath=Browser.window.patrol.findPath(this.player.transform.position,this.target.transform.position,'level',this.playerNavMeshGroup);
+			var calculatedPath=this.patrol.findPath(this.player.transform.position,this.target.transform.position,'level',this.playerNavMeshGroup);
 			if (calculatedPath && calculatedPath.length){
 				var debugPath=(calculatedPath);
 				console.log("start",this.player.transform.position.x,this.player.transform.position.y,this.player.transform.position.z);

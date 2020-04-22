@@ -9,6 +9,7 @@ package code
 	{
 		public var faces:Array;
 		public var vertices:Vector.<Vector3>;
+		public var isGeometry:Boolean = true;
 		public function Geometry() 
 		{
 			
