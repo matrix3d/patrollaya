@@ -925,6 +925,7 @@ var NavTest=(function(){
 	function NavTest(){
 		//private var levelUrl:String="res/unity/level.ls";
 		this.navUrl="meshes/level.nav.js";
+		this.meshUrl="meshes/level.js";
 		//private var navUrl:String="meshes/level2.js";
 		this.scene=null;
 		this.camera=null;
@@ -966,12 +967,12 @@ var NavTest=(function(){
 		this.pathLine=new Sprite3D;
 		this.scene.addChild(this.pathLine);
 		Laya.loader.load(this.navUrl,Handler.create(this,this.onNavLoaded),null,"json");
+		Laya.loader.load(this.meshUrl,Handler.create(this,this.onMeshLoaded),null,"json");
 	}
 
 	__class(NavTest,'NavTest');
 	var __proto=NavTest.prototype;
-	__proto.onNavLoaded=function(){
-		var json=Laya.loader.getRes(this.navUrl);
+	__proto.getG=function(json){
 		var nUvLayers=0;
 		if (json.uvs){
 			for (var i=0;i < json.uvs.length;i++){
@@ -1024,6 +1025,28 @@ var NavTest=(function(){
 		var g=new Geometry;
 		g.faces=faces;
 		g.vertices=p;
+		return g;
+	}
+
+	__proto.onMeshLoaded=function(){
+		var json=Laya.loader.getRes(this.meshUrl);
+		var g=this.getG(json);
+		var mesh=new MeshSprite3D(new NavMesh(g,false));
+		mesh.meshRender.material=new StandardMaterial;
+		(mesh.meshRender.material).diffuseColor=new Vector3(1,1,1);
+		this.pathLine=mesh.addComponent(DrawLineScript);
+		this.scene.addChild(mesh);
+	}
+
+	__proto.onNavLoaded=function(){
+		var json=Laya.loader.getRes(this.navUrl);
+		var g=this.getG(json);
+		var mesh=new MeshSprite3D(new NavMesh(g,true));
+		mesh.meshRender.material=new StandardMaterial;
+		(mesh.meshRender.material).diffuseColor=new Vector3(.1,.1,.1);
+		(mesh.meshRender.material).renderMode=15;
+		this.pathLine=mesh.addComponent(DrawLineScript);
+		this.scene.addChild(mesh);
 		this.patrol=Browser.window.patrol;
 		if (this.patrol==null&&Browser.window.threePathfinding){
 			this.patrol=Browser.window.threePathfinding.Pathfinding;
@@ -1036,10 +1059,6 @@ var NavTest=(function(){
 		}
 		this.patrol.setZoneData('level',zoneNodes);
 		Laya.stage.on("click",this,this.onClick);
-		var mesh=new MeshSprite3D(new NavMesh(g));
-		mesh.meshRender.material=new StandardMaterial;
-		(mesh.meshRender.material).diffuseColor=new Vector3(1,0,0);
-		this.pathLine=mesh.addComponent(DrawLineScript);
 		this.meshC=mesh.addComponent(MeshCollider);
 		this.meshC.mesh=mesh.meshFilter.sharedMesh;
 		this.scene.addChild(mesh);

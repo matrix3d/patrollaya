@@ -432,14 +432,6 @@
 		}
 	}
 	();
-	var c = {
-		//PLAYER: new t.Color(15631215).convertGammaToLinear(2.2).getHex(),
-		//TARGET: new t.Color(14469912).convertGammaToLinear(2.2).getHex(),
-		//PATH: new t.Color(41903).convertGammaToLinear(2.2).getHex(),
-		//WAYPOINT: new t.Color(41903).convertGammaToLinear(2.2).getHex(),
-		//CLAMPED_STEP: new t.Color(14472114).convertGammaToLinear(2.2).getHex(),
-		//CLOSEST_NODE: new t.Color(4417387).convertGammaToLinear(2.2).getHex()
-	}
 	e.Pathfinding = h
 });
 //# sourceMappingURL=three-pathfinding.umd.js.map

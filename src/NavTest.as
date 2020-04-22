@@ -46,6 +46,7 @@ package
 		
 		//private var levelUrl:String = "res/unity/level.ls";
 		private var navUrl:String = "meshes/level.nav.js";
+		private var meshUrl:String = "meshes/level.js";
 		//private var navUrl:String = "meshes/level2.js";
 		private var scene:Scene;
 		private var camera:Camera;
@@ -103,18 +104,14 @@ package
 			
 			pathLine = new Sprite3D;
 			scene.addChild(pathLine);
-			Laya.loader.load(navUrl, Handler.create(this, onNavLoaded),null,Loader.JSON);
+			Laya.loader.load(navUrl, Handler.create(this, onNavLoaded), null, Loader.JSON);
+			Laya.loader.load(meshUrl, Handler.create(this, onMeshLoaded),null,Loader.JSON);
 		}
 		
-		private function onNavLoaded():void{
-			var json:Object = Laya.loader.getRes(navUrl);
-			
+		private function getG(json:Object):Geometry{
 			var nUvLayers:int = 0;
 
 			if ( json.uvs ) {
-
-				// disregard empty arrays
-
 				for (var i:int = 0; i < json.uvs.length; i ++ ) {
 					if ( json.uvs[ i ].length ) nUvLayers ++;
 				}
@@ -123,9 +120,6 @@ package
 			var p2:Array = json.vertices;
 			var ii:Array =  json.faces;
 			var faces:Array = [];
-			/*for (var i:int = 0; i < ii.length/5;i++ ){
-				faces.push(new Face(ii[i*5+1],ii[i*5+2],ii[i*5+3]));
-			}*/
 			
 			var offset:int = 0;
 			var zLength:int = ii.length;
@@ -172,6 +166,34 @@ package
 			var g:Geometry = new Geometry;
 			g.faces = faces;
 			g.vertices = p;
+			return g;
+		}
+		
+		private function onMeshLoaded():void{
+			var json:Object = Laya.loader.getRes(meshUrl);
+			var g:Geometry = getG(json);
+			
+			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(g,false));
+			mesh.meshRender.material = new StandardMaterial;
+			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(1, 1, 1);
+			//(mesh.meshRender.material as StandardMaterial).renderMode = StandardMaterial.RENDERMODE_TRANSPARENT;
+			pathLine = mesh.addComponent(DrawLineScript);
+			
+			scene.addChild(mesh);
+		}
+		
+		
+		private function onNavLoaded():void{
+			var json:Object = Laya.loader.getRes(navUrl);
+			var g:Geometry = getG(json);
+			
+			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(g,true));
+			mesh.meshRender.material = new StandardMaterial;
+			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(.1, .1, .1);
+			(mesh.meshRender.material as StandardMaterial).renderMode = StandardMaterial.RENDERMODE_ADDTIVE;
+			pathLine = mesh.addComponent(DrawLineScript);
+			
+			scene.addChild(mesh);
 			
 			patrol = Browser.window.patrol;
 			if (patrol==null&&Browser.window.threePathfinding){
@@ -191,11 +213,6 @@ package
 			
 			Laya.stage.on(Event.CLICK, this, onClick);
 			
-			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(g));
-			//mesh.transform.scale = new Vector3(10, 10, 10);
-			mesh.meshRender.material = new StandardMaterial;
-			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(1, 0, 0);
-			pathLine = mesh.addComponent(DrawLineScript);
 			meshC = mesh.addComponent(MeshCollider) as MeshCollider;
 			meshC.mesh = mesh.meshFilter.sharedMesh;
 			

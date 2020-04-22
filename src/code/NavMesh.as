@@ -34,27 +34,9 @@ package code
 			var vertexDeclaration:VertexDeclaration = VertexPositionNormalColor.vertexDeclaration;
 			
 			var p2:Array = [];
-			/*for (var j:int = 0; j < p.length;j+=3 ){
-				p2.push(p[j]);
-				p2.push(p[j+1]);
-				p2.push(p[j + 2]);
-				p2.push(0);
-				p2.push(1);
-				p2.push(0);
-				var c:Vector3 = Color.getRandomColor();
-				p2.push(c.x);
-				p2.push(c.y);
-				p2.push(c.z);
-				p2.push(1);
-			}*/
-			
-			
 			var i2:Array = [];
 			var k:int = 0;
 			for (var j:int = 0; j <_numberIndices/3;j++ ){
-				/*i2.push(i[j*5+2]);
-				i2.push(i[j*5+1]);
-				i2.push(i[j * 5 + 3]);*/
 				i2.push(k++);
 				i2.push(k++);
 				i2.push(k++);
