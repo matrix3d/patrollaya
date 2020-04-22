@@ -1034,7 +1034,6 @@ var NavTest=(function(){
 		var mesh=new MeshSprite3D(new NavMesh(g,false));
 		mesh.meshRender.material=new StandardMaterial;
 		(mesh.meshRender.material).diffuseColor=new Vector3(1,1,1);
-		this.pathLine=mesh.addComponent(DrawLineScript);
 		this.scene.addChild(mesh);
 	}
 
@@ -1043,7 +1042,7 @@ var NavTest=(function(){
 		var g=this.getG(json);
 		var mesh=new MeshSprite3D(new NavMesh(g,true));
 		mesh.meshRender.material=new StandardMaterial;
-		(mesh.meshRender.material).diffuseColor=new Vector3(.1,.1,.1);
+		(mesh.meshRender.material).diffuseColor=new Vector3(.1,0,0);
 		(mesh.meshRender.material).renderMode=15;
 		this.pathLine=mesh.addComponent(DrawLineScript);
 		this.scene.addChild(mesh);
@@ -1061,7 +1060,6 @@ var NavTest=(function(){
 		Laya.stage.on("click",this,this.onClick);
 		this.meshC=mesh.addComponent(MeshCollider);
 		this.meshC.mesh=mesh.meshFilter.sharedMesh;
-		this.scene.addChild(mesh);
 	}
 
 	__proto.onClick=function(){
@@ -64857,36 +64855,37 @@ var NavMesh=(function(_super){
 			p2.push(this.g.vertices[a].y);
 			p2.push(this.g.vertices[a].z);
 			p2.push(0);
-			p2.push(1);
+			p2.push(0);
 			p2.push(0);
 			var cc=this.getColor(this.g.vertices[a]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
-			p2.push(1);
+			p2.push(cc.w);
 			p2.push(this.g.vertices[b].x);
 			p2.push(this.g.vertices[b].y);
 			p2.push(this.g.vertices[b].z);
 			p2.push(0);
-			p2.push(1);
 			p2.push(0);
-			var cc=this.getColor(this.g.vertices[b]);
+			p2.push(0);
+			cc=this.getColor(this.g.vertices[b]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
-			p2.push(1);
+			p2.push(cc.w);
 			p2.push(this.g.vertices[c].x);
 			p2.push(this.g.vertices[c].y);
 			p2.push(this.g.vertices[c].z);
 			p2.push(0);
-			p2.push(1);
 			p2.push(0);
-			var cc=this.getColor(this.g.vertices[c]);
+			p2.push(0);
+			cc=this.getColor(this.g.vertices[c]);
 			p2.push(cc.x);
 			p2.push(cc.y);
 			p2.push(cc.z);
-			p2.push(1);
-		};
+			p2.push(cc.w);
+		}
+		NavMesh.computeNormal(p2,i2);
 		var indices=new Uint16Array(i2);
 		var vertices=new Float32Array(p2);
 		this._numberVertices=p2.length / 10;
@@ -64899,7 +64898,46 @@ var NavMesh=(function(_super){
 	}
 
 	__proto.getColor=function(v){
-		return Color.fromHSV((Vector3.scalarLength(v)/20+100)%1,1,1);
+		var c3=Color.fromHSV((Vector3.scalarLength(v)/20+100)%1,1,1);
+		return new Vector4(c3.x,c3.y,c3.z,1);
+	}
+
+	NavMesh.computeNormal=function(vin,idata){
+		for (var i=0;i < idata.length;i+=3){
+			var i0=idata[i]*10;
+			var i1=idata[i+1]*10;
+			var i2=idata[i+2]*10;
+			var x0=vin[i0];
+			var y0=vin[i0+1];
+			var z0=vin[i0+2];
+			var x1=vin[i1];
+			var y1=vin[i1+1];
+			var z1=vin[i1+2];
+			var x2=vin[i2];
+			var y2=vin[i2+1];
+			var z2=vin[i2+2];
+			var nx=(y0-y2)*(z0-z1)-(z0-z2)*(y0-y1);
+			var ny=(z0-z2)*(x0-x1)-(x0-x2)*(z0-z1);
+			var nz=(x0-x2)*(y0-y1)-(y0-y2)*(x0-x1);
+			vin[i0+3]+=nx;
+			vin[i1+3]+=nx;
+			vin[i2+3]+=nx;
+			vin[i0+4]+=ny;
+			vin[i1+4]+=ny;
+			vin[i2+4]+=ny;
+			vin[i0+5]+=nz;
+			vin[i1+5]+=nz;
+			vin[i2+5]+=nz;
+		}
+		for (i=3;i < vin.length;i+=10){
+			nx=vin[i];
+			ny=vin[i+1];
+			nz=vin[i+2];
+			var distance=Math.sqrt(nx *nx+ny *ny+nz *nz);
+			vin[i] /=distance;
+			vin[i+1] /=distance;
+			vin[i+2] /=distance;
+		}
 	}
 
 	return NavMesh;

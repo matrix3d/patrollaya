@@ -177,7 +177,7 @@ package
 			mesh.meshRender.material = new StandardMaterial;
 			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(1, 1, 1);
 			//(mesh.meshRender.material as StandardMaterial).renderMode = StandardMaterial.RENDERMODE_TRANSPARENT;
-			pathLine = mesh.addComponent(DrawLineScript);
+			//pathLine = mesh.addComponent(DrawLineScript);
 			
 			scene.addChild(mesh);
 		}
@@ -189,7 +189,7 @@ package
 			
 			var mesh:MeshSprite3D = new MeshSprite3D(new NavMesh(g,true));
 			mesh.meshRender.material = new StandardMaterial;
-			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(.1, .1, .1);
+			(mesh.meshRender.material as StandardMaterial).diffuseColor = new Vector3(.1, 0, 0);
 			(mesh.meshRender.material as StandardMaterial).renderMode = StandardMaterial.RENDERMODE_ADDTIVE;
 			pathLine = mesh.addComponent(DrawLineScript);
 			
@@ -215,8 +215,6 @@ package
 			
 			meshC = mesh.addComponent(MeshCollider) as MeshCollider;
 			meshC.mesh = mesh.meshFilter.sharedMesh;
-			
-			scene.addChild(mesh);
 		}
 		
 		private function onClick():void 
